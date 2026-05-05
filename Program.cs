@@ -88,6 +88,9 @@ app.MapGet("/weatherforecast", () =>
 .WithName("GetWeatherForecast")
 .WithOpenApi();
 
+// Health check endpoint cho UptimeRobot/Cron-job
+app.MapGet("/api/health", () => Results.Ok("OK"));
+
 app.Run();
 
 record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)

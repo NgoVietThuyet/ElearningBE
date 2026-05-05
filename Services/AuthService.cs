@@ -37,13 +37,13 @@ namespace ElearningAPI.Services
             if (string.IsNullOrWhiteSpace(dto.Email) || string.IsNullOrWhiteSpace(dto.Password))
                 return "Email và mật khẩu là bắt buộc.";
 
-            if (await _context.Users.AnyAsync(u => u.Email == dto.Email))
+            if (await _context.Users.AsNoTracking().AnyAsync(u => u.Email == dto.Email))
                 return "Email đã tồn tại trong hệ thống.";
 
             string passwordHash;
             try
             {
-                passwordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password);
+                passwordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password, workFactor: 10);
             }
             catch
             {
@@ -73,7 +73,7 @@ namespace ElearningAPI.Services
         public async Task<string?> LoginAsync(LoginDto dto)
         {
             // Tìm người dùng theo Email
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == dto.Email);
+            var user = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Email == dto.Email);
             
         // Kiểm tra người dùng và xác thực mật khẩu [cite: 268]
             if (user == null || !BCrypt.Net.BCrypt.Verify(dto.Password, user.PasswordHash))
