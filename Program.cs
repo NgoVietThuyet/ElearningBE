@@ -55,14 +55,12 @@ builder.Services.AddCors(options =>
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
+app.UseCors("AllowReactApp");
 
 app.UseSwagger();
 app.UseSwaggerUI();
 
-
 app.UseHttpsRedirection();
-
-app.UseCors("AllowReactApp");
 
 app.UseAuthentication(); // Xác thực danh tính
 app.UseAuthorization();  // Phân quyền truy cập
