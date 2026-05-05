@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "D:\\Study\\Ky6\\Web\\EduSmartBE\\ElearningAPI\\ElearningAPI.csproj": {}
+    "D:\\Study\\Ky6\\Web\\EDU\\EduSmartBE\\ElearningAPI\\ElearningAPI.csproj": {}
   },
   "projects": {
-    "D:\\Study\\Ky6\\Web\\EduSmartBE\\ElearningAPI\\ElearningAPI.csproj": {
+    "D:\\Study\\Ky6\\Web\\EDU\\EduSmartBE\\ElearningAPI\\ElearningAPI.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "D:\\Study\\Ky6\\Web\\EduSmartBE\\ElearningAPI\\ElearningAPI.csproj",
+        "projectUniqueName": "D:\\Study\\Ky6\\Web\\EDU\\EduSmartBE\\ElearningAPI\\ElearningAPI.csproj",
         "projectName": "ElearningAPI",
-        "projectPath": "D:\\Study\\Ky6\\Web\\EduSmartBE\\ElearningAPI\\ElearningAPI.csproj",
+        "projectPath": "D:\\Study\\Ky6\\Web\\EDU\\EduSmartBE\\ElearningAPI\\ElearningAPI.csproj",
         "packagesPath": "C:\\Users\\ngoth\\.nuget\\packages\\",
-        "outputPath": "D:\\Study\\Ky6\\Web\\EduSmartBE\\ElearningAPI\\obj\\",
+        "outputPath": "D:\\Study\\Ky6\\Web\\EDU\\EduSmartBE\\ElearningAPI\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -50,6 +50,14 @@
         "net8.0": {
           "targetAlias": "net8.0",
           "dependencies": {
+            "BCrypt.Net-Next": {
+              "target": "Package",
+              "version": "[4.1.0, )"
+            },
+            "Microsoft.AspNetCore.Authentication.JwtBearer": {
+              "target": "Package",
+              "version": "[8.0.11, )"
+            },
             "Microsoft.AspNetCore.OpenApi": {
               "target": "Package",
               "version": "[8.0.26, )"
@@ -61,6 +69,8 @@
               "version": "[8.0.11, )"
             },
             "Microsoft.EntityFrameworkCore.Tools": {
+              "include": "Runtime, Build, Native, ContentFiles, Analyzers, BuildTransitive",
+              "suppressParent": "All",
               "target": "Package",
               "version": "[8.0.11, )"
             },
