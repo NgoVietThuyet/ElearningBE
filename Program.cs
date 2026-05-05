@@ -47,7 +47,7 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowReactApp",
         policy =>
         {
-            policy.WithOrigins("http://localhost:5173", "https://elearning-fe-jcuz.vercel.app") // Địa chỉ của React
+            policy.SetIsOriginAllowed(origin => true)
                   .AllowAnyHeader()
                   .AllowAnyMethod();
         });
@@ -60,7 +60,7 @@ app.UseCors("AllowReactApp");
 app.UseSwagger();
 app.UseSwaggerUI();
 
-app.UseHttpsRedirection();
+// app.UseHttpsRedirection();
 
 app.UseAuthentication(); // Xác thực danh tính
 app.UseAuthorization();  // Phân quyền truy cập
