@@ -1,0 +1,30 @@
+using System.ComponentModel.DataAnnotations;
+
+namespace ElearningAPI.Dtos
+{
+    public class LessonDto
+    {
+        [Required]
+        public int CourseId { get; set; }
+        
+        [Required, MaxLength(255)]
+        public string Title { get; set; } = string.Empty;
+        
+        public string Description { get; set; } = string.Empty;
+        
+        [MaxLength(255)]
+        public string VideoUrl { get; set; } = string.Empty;
+        
+        [MaxLength(255)]
+        public string PdfUrl { get; set; } = string.Empty;
+    }
+
+    public class LessonResponseDto : LessonDto
+    {
+        public int Id { get; set; }
+        public int CreatedBy { get; set; }
+        public string CreatorName { get; set; } = string.Empty;
+        public DateTime CreatedAt { get; set; }
+        public DateTime UpdatedAt { get; set; }
+    }
+}

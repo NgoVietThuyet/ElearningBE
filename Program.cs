@@ -41,6 +41,9 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
 builder.Services.AddAuthorization();
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IAdminService, AdminService>();
+builder.Services.AddScoped<ITeacherService, TeacherService>();
+builder.Services.AddScoped<IStudentService, StudentService>();
 // 1. Định nghĩa chính sách CORS
 builder.Services.AddCors(options =>
 {
