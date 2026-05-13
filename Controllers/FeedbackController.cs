@@ -104,7 +104,6 @@ namespace ElearningAPI.Controllers
         }
 
         [HttpPost]
-        [Authorize(Roles = "STUDENT,TEACHER,ADMIN")]
         public async Task<IActionResult> CreateFeedback([FromBody] CreateFeedbackDto dto)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);

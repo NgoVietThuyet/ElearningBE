@@ -8,6 +8,32 @@ namespace ElearningAPI.Dtos
         public int TotalCourses { get; set; }
         public int TotalNews { get; set; }
         public int TotalLessons { get; set; }
+        public CourseManagementStatsDto CourseStats { get; set; } = new();
+        public UserManagementStatsDto UserStats { get; set; } = new();
+    }
+
+    public class UserManagementStatsDto
+    {
+        public int Total { get; set; }
+        public int TotalTrend { get; set; }
+        public int Active { get; set; }
+        public int ActiveTrend { get; set; }
+        public int Teacher { get; set; }
+        public int TeacherTrend { get; set; }
+        public int Student { get; set; }
+        public int StudentTrend { get; set; }
+    }
+
+    public class CourseManagementStatsDto
+    {
+        public int Total { get; set; }
+        public int TotalTrend { get; set; }
+        public int Published { get; set; }
+        public int PublishedTrend { get; set; }
+        public int Draft { get; set; }
+        public int DraftTrend { get; set; }
+        public int Hidden { get; set; }
+        public int HiddenTrend { get; set; }
     }
 
     public class GpaDistributionDto

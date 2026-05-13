@@ -16,6 +16,20 @@ namespace ElearningAPI.Models
         public string Description { get; set; } = string.Empty;
         
         public string? AvatarUrl { get; set; }
+
+        [MaxLength(100)]
+        public string Category { get; set; } = "Sinh học";
+
+        [MaxLength(30)]
+        public string Status { get; set; } = "Published";
+
+        public int DurationMinutes { get; set; } = 0;
+
+        public DateTime? StartDate { get; set; }
+
+        public DateTime? EndDate { get; set; }
+
+        public string LearningOutcomes { get; set; } = string.Empty;
         
         public int CreatedBy { get; set; }
         [ForeignKey("CreatedBy")]

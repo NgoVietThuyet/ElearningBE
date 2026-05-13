@@ -12,6 +12,20 @@ namespace ElearningAPI.Dtos
         public string? AvatarUrl { get; set; }
         
         public int? TeacherId { get; set; }
+
+        [MaxLength(100)]
+        public string Category { get; set; } = "Sinh học";
+
+        [MaxLength(30)]
+        public string Status { get; set; } = "Published";
+
+        public int DurationMinutes { get; set; } = 0;
+
+        public DateTime? StartDate { get; set; }
+
+        public DateTime? EndDate { get; set; }
+
+        public string LearningOutcomes { get; set; } = string.Empty;
     }
 
     public class CourseResponseDto : CourseDto
@@ -20,6 +34,10 @@ namespace ElearningAPI.Dtos
         public int CreatedBy { get; set; }
         public string CreatorName { get; set; } = string.Empty;
         public string TeacherName { get; set; } = string.Empty;
+        public string? TeacherAvatarUrl { get; set; }
+        public int LessonCount { get; set; }
+        public int StudentCount { get; set; }
+        public decimal AverageProgress { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
     }

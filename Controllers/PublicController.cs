@@ -23,6 +23,7 @@ namespace ElearningAPI.Controllers
         {
             var courses = await _context.Courses
                 .Include(c => c.Creator)
+                .Include(c => c.Teacher)
                 .Include(c => c.Lessons)
                 .Include(c => c.Enrollments)
                 .OrderByDescending(c => c.CreatedAt)
@@ -31,9 +32,18 @@ namespace ElearningAPI.Controllers
                     c.Id,
                     c.Title,
                     c.Description,
+                    c.AvatarUrl,
+                    c.Category,
+                    c.Status,
+                    c.DurationMinutes,
+                    c.StartDate,
+                    c.EndDate,
+                    c.LearningOutcomes,
                     CreatorName = c.Creator != null ? c.Creator.FullName : "Admin",
+                    TeacherName = c.Teacher != null ? c.Teacher.FullName : string.Empty,
                     LessonCount = c.Lessons.Count,
                     StudentCount = c.Enrollments.Count,
+                    AverageProgress = c.Enrollments.Any() ? c.Enrollments.Average(e => e.ProgressPercentage) : 0,
                     c.CreatedAt
                 })
                 .ToListAsync();
@@ -69,6 +79,7 @@ namespace ElearningAPI.Controllers
         {
             var course = await _context.Courses
                 .Include(c => c.Creator)
+                .Include(c => c.Teacher)
                 .Include(c => c.Lessons)
                 .Include(c => c.Enrollments)
                     .ThenInclude(e => e.Student)
@@ -81,14 +92,26 @@ namespace ElearningAPI.Controllers
                 course.Id,
                 course.Title,
                 course.Description,
+                course.AvatarUrl,
+                course.Category,
+                course.Status,
+                course.DurationMinutes,
+                course.StartDate,
+                course.EndDate,
+                course.LearningOutcomes,
                 CreatorName = course.Creator != null ? course.Creator.FullName : "Admin",
+                TeacherId = course.TeacherId,
+                TeacherName = course.Teacher != null ? course.Teacher.FullName : string.Empty,
+                TeacherAvatarUrl = course.Teacher != null ? course.Teacher.AvatarUrl : null,
                 LessonCount = course.Lessons.Count,
                 StudentCount = course.Enrollments.Count,
+                AverageProgress = course.Enrollments.Any() ? course.Enrollments.Average(e => e.ProgressPercentage) : 0,
                 course.CreatedAt,
                 Lessons = course.Lessons.OrderBy(l => l.CreatedAt).Select(l => new
                 {
                     l.Id,
                     l.Title,
+                    l.Description,
                     l.VideoUrl,
                     l.PdfUrl
                 }),
@@ -130,12 +153,16 @@ namespace ElearningAPI.Controllers
             var totalCourses = await _context.Courses.CountAsync();
             var totalUsers = await _context.Users.CountAsync();
             var totalLessons = await _context.Lessons.CountAsync();
+            var totalTeachers = await _context.Users.CountAsync(u => u.Role == UserRole.TEACHER);
+            var totalFeedbacks = await _context.Feedbacks.CountAsync();
 
             return Ok(new
             {
                 totalCourses,
                 totalUsers,
-                totalLessons
+                totalLessons,
+                totalTeachers,
+                totalFeedbacks
             });
         }
 

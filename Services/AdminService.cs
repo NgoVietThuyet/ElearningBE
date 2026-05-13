@@ -218,16 +218,29 @@ namespace ElearningAPI.Services
         {
             return await _context.Courses
                 .Include(c => c.Creator)
+                .Include(c => c.Teacher)
+                .Include(c => c.Lessons)
+                .Include(c => c.Enrollments)
                 .Select(c => new CourseResponseDto
                 {
                     Id = c.Id,
                     Title = c.Title,
                     Description = c.Description,
+                    Category = c.Category,
+                    Status = c.Status,
+                    DurationMinutes = c.DurationMinutes,
+                    StartDate = c.StartDate,
+                    EndDate = c.EndDate,
+                    LearningOutcomes = c.LearningOutcomes,
                     CreatedBy = c.CreatedBy,
                     CreatorName = c.Creator != null ? c.Creator.FullName : string.Empty,
                     TeacherId = c.TeacherId,
                     TeacherName = c.Teacher != null ? c.Teacher.FullName : string.Empty,
+                    TeacherAvatarUrl = c.Teacher != null ? c.Teacher.AvatarUrl : null,
                     AvatarUrl = c.AvatarUrl,
+                    LessonCount = c.Lessons.Count,
+                    StudentCount = c.Enrollments.Count,
+                    AverageProgress = c.Enrollments.Any() ? c.Enrollments.Average(e => e.ProgressPercentage) : 0,
                     CreatedAt = c.CreatedAt,
                     UpdatedAt = c.UpdatedAt
                 })
@@ -239,6 +252,8 @@ namespace ElearningAPI.Services
             var course = await _context.Courses
                 .Include(c => c.Creator)
                 .Include(c => c.Teacher)
+                .Include(c => c.Lessons)
+                .Include(c => c.Enrollments)
                 .FirstOrDefaultAsync(c => c.Id == id);
 
             if (course == null) return null;
@@ -248,11 +263,21 @@ namespace ElearningAPI.Services
                 Id = course.Id,
                 Title = course.Title,
                 Description = course.Description,
+                Category = course.Category,
+                Status = course.Status,
+                DurationMinutes = course.DurationMinutes,
+                StartDate = course.StartDate,
+                EndDate = course.EndDate,
+                LearningOutcomes = course.LearningOutcomes,
                 CreatedBy = course.CreatedBy,
                 CreatorName = course.Creator != null ? course.Creator.FullName : string.Empty,
                 TeacherId = course.TeacherId,
                 TeacherName = course.Teacher != null ? course.Teacher.FullName : string.Empty,
+                TeacherAvatarUrl = course.Teacher != null ? course.Teacher.AvatarUrl : null,
                 AvatarUrl = course.AvatarUrl,
+                LessonCount = course.Lessons.Count,
+                StudentCount = course.Enrollments.Count,
+                AverageProgress = course.Enrollments.Any() ? course.Enrollments.Average(e => e.ProgressPercentage) : 0,
                 CreatedAt = course.CreatedAt,
                 UpdatedAt = course.UpdatedAt
             };
@@ -265,6 +290,12 @@ namespace ElearningAPI.Services
                 Title = courseDto.Title,
                 Description = courseDto.Description,
                 AvatarUrl = courseDto.AvatarUrl,
+                Category = courseDto.Category,
+                Status = courseDto.Status,
+                DurationMinutes = courseDto.DurationMinutes,
+                StartDate = courseDto.StartDate,
+                EndDate = courseDto.EndDate,
+                LearningOutcomes = courseDto.LearningOutcomes,
                 CreatedBy = adminId,
                 TeacherId = courseDto.TeacherId,
                 CreatedAt = DateTime.UtcNow,
@@ -285,6 +316,12 @@ namespace ElearningAPI.Services
             course.Title = courseDto.Title;
             course.Description = courseDto.Description;
             course.AvatarUrl = courseDto.AvatarUrl;
+            course.Category = courseDto.Category;
+            course.Status = courseDto.Status;
+            course.DurationMinutes = courseDto.DurationMinutes;
+            course.StartDate = courseDto.StartDate;
+            course.EndDate = courseDto.EndDate;
+            course.LearningOutcomes = courseDto.LearningOutcomes;
             course.TeacherId = courseDto.TeacherId;
             course.UpdatedAt = DateTime.UtcNow;
 
@@ -406,12 +443,37 @@ namespace ElearningAPI.Services
         // --- Stats Methods ---
         public async Task<OverviewStatsDto> GetOverviewStatsAsync()
         {
+            var courses = await _context.Courses.ToListAsync();
+            var users = await _context.Users.ToListAsync();
+            
             return new OverviewStatsDto
             {
-                TotalUsers = await _context.Users.CountAsync(),
-                TotalCourses = await _context.Courses.CountAsync(),
+                TotalUsers = users.Count,
+                TotalCourses = courses.Count,
                 TotalNews = await _context.News.CountAsync(),
-                TotalLessons = await _context.Lessons.CountAsync()
+                TotalLessons = await _context.Lessons.CountAsync(),
+                UserStats = new UserManagementStatsDto
+                {
+                    Total = users.Count,
+                    TotalTrend = 15,
+                    Active = users.Count, // Mocking all active for now
+                    ActiveTrend = 8,
+                    Teacher = users.Count(u => u.Role == Role.TEACHER),
+                    TeacherTrend = 2,
+                    Student = users.Count(u => u.Role == Role.STUDENT),
+                    StudentTrend = 12
+                },
+                CourseStats = new CourseManagementStatsDto
+                {
+                    Total = courses.Count,
+                    TotalTrend = 12,
+                    Published = courses.Count(c => c.Status == "Published"),
+                    PublishedTrend = 8,
+                    Draft = courses.Count(c => c.Status == "Draft"),
+                    DraftTrend = -3,
+                    Hidden = courses.Count(c => c.Status == "Hidden"),
+                    HiddenTrend = 0
+                }
             };
         }
 

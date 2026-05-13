@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
+using ElearningAPI.Models;
 using ElearningAPI.Services;
 using Microsoft.OpenApi.Models;
 var builder = WebApplication.CreateBuilder(args);
@@ -72,6 +73,116 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.Migrate();
+
+    if (!await db.Courses.AnyAsync(c => c.Title == "Sinh học 12"))
+    {
+        var admin = await db.Users.FirstOrDefaultAsync(u => u.Role == UserRole.ADMIN);
+        if (admin == null)
+        {
+            admin = new User
+            {
+                FullName = "Người dùng",
+                Email = "admin@edusmart.vn",
+                PasswordHash = "12345678",
+                Role = UserRole.ADMIN,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+            db.Users.Add(admin);
+            await db.SaveChangesAsync();
+        }
+
+        var teacher = await db.Users.FirstOrDefaultAsync(u => u.Email == "thuyet.bio12@edusmart.vn");
+        if (teacher == null)
+        {
+            teacher = new User
+            {
+                FullName = "Nguyễn Viết Thuyết",
+                Email = "thuyet.bio12@edusmart.vn",
+                PasswordHash = "12345678",
+                Role = UserRole.TEACHER,
+                AvatarUrl = "https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?auto=format&fit=crop&w=256&q=80",
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+            db.Users.Add(teacher);
+            await db.SaveChangesAsync();
+        }
+
+        var student = await db.Users.FirstOrDefaultAsync(u => u.Email == "student.bio12@edusmart.vn");
+        if (student == null)
+        {
+            student = new User
+            {
+                FullName = "Học viên Sinh học 12",
+                Email = "student.bio12@edusmart.vn",
+                PasswordHash = "12345678",
+                Role = UserRole.STUDENT,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+            db.Users.Add(student);
+            await db.SaveChangesAsync();
+        }
+
+        var course = new Course
+        {
+            Title = "Sinh học 12",
+            Description = "<p>Khóa học Sinh học 12 được biên soạn bám sát chương trình giáo dục phổ thông mới. Học sinh sẽ được học toàn bộ kiến thức từ cơ bản đến nâng cao, kết hợp lý thuyết, bài tập, video minh họa, flashcard và quiz giúp luyện thi tốt nghiệp và đại học hiệu quả.</p>",
+            AvatarUrl = "https://images.unsplash.com/photo-1530210124550-912dc1381cb8?auto=format&fit=crop&w=1200&q=80",
+            Category = "Sinh học 12",
+            Status = "Published",
+            DurationMinutes = 2900,
+            StartDate = new DateTime(2026, 5, 12, 0, 0, 0, DateTimeKind.Utc),
+            EndDate = new DateTime(2026, 11, 12, 0, 0, 0, DateTimeKind.Utc),
+            LearningOutcomes = "Hệ thống kiến thức đầy đủ, dễ hiểu\nBài giảng video chất lượng cao\nTài liệu PDF và sơ đồ tư duy\nFlashcard giúp ghi nhớ nhanh\nBài tập, quiz và bài thi đánh giá năng lực",
+            CreatedBy = admin.Id,
+            TeacherId = teacher.Id,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        db.Courses.Add(course);
+        await db.SaveChangesAsync();
+
+        var lessonTitles = new[]
+        {
+            "Giới thiệu chung về sinh học",
+            "Các cấp độ tổ chức của thế giới sống",
+            "Thành phần hóa học của tế bào",
+            "Cấu trúc và chức năng tế bào",
+            "Di truyền học",
+            "Biến dị",
+            "Tiến hóa",
+            "Sinh thái học",
+            "Ứng dụng sinh học"
+        };
+
+        foreach (var title in lessonTitles)
+        {
+            db.Lessons.Add(new Lesson
+            {
+                CourseId = course.Id,
+                Title = title,
+                Description = $"Nội dung bài học: {title}.",
+                VideoUrl = "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                PdfUrl = "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
+                CreatedBy = admin.Id,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            });
+        }
+
+        db.Enrollments.Add(new Enrollment
+        {
+            CourseId = course.Id,
+            StudentId = student.Id,
+            ProgressPercentage = 68,
+            EnrolledAt = DateTime.UtcNow.AddDays(-7),
+            LastAccessed = DateTime.UtcNow
+        });
+
+        await db.SaveChangesAsync();
+    }
 }
 
 // Configure the HTTP request pipeline.
