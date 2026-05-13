@@ -1,4 +1,5 @@
 using ElearningAPI.Data;
+using ElearningAPI.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -53,6 +54,7 @@ namespace ElearningAPI.Controllers
                     n.Id,
                     n.Title,
                     n.Content,
+                    n.AvatarUrl,
                     AuthorName = n.Author != null ? n.Author.FullName : "Admin",
                     n.CreatedAt
                 })
@@ -115,6 +117,7 @@ namespace ElearningAPI.Controllers
                 news.Id,
                 news.Title,
                 news.Content, // This contains HTML from TipTap
+                news.AvatarUrl,
                 AuthorName = news.Author != null ? news.Author.FullName : "Admin",
                 news.CreatedAt
             });
@@ -134,6 +137,32 @@ namespace ElearningAPI.Controllers
                 totalUsers,
                 totalLessons
             });
+        }
+
+        /// <summary>GET /api/public/featured-teachers — Lấy danh sách giảng viên tiêu biểu (Top 4)</summary>
+        [HttpGet("featured-teachers")]
+        public async Task<IActionResult> GetFeaturedTeachers()
+        {
+            var teachers = await _context.Users
+                .Where(u => u.Role == UserRole.TEACHER)
+                .Select(u => new
+                {
+                    u.Id,
+                    u.FullName,
+                    u.Email,
+                    // Chỉ trả về avatarUrl nếu là URL thực (http/https), bỏ qua base64 để tránh response quá lớn
+                    AvatarUrl = (u.AvatarUrl != null && (u.AvatarUrl.StartsWith("http://") || u.AvatarUrl.StartsWith("https://")))
+                        ? u.AvatarUrl
+                        : null,
+                    StudentCount = u.StudentsManaged.Count,
+                    LessonCount = u.CreatedLessons.Count,
+                    Score = (u.StudentsManaged.Count + u.CreatedLessons.Count) / 2.0
+                })
+                .OrderByDescending(t => t.Score)
+                .Take(4)
+                .ToListAsync();
+
+            return Ok(teachers);
         }
     }
 }

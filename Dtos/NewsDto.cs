@@ -9,6 +9,8 @@ namespace ElearningAPI.Dtos
         
         [Required]
         public string Content { get; set; } = string.Empty;
+
+        public string? AvatarUrl { get; set; }
     }
 
     public class NewsResponseDto : NewsDto

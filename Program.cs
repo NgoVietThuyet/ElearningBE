@@ -1,4 +1,5 @@
 using ElearningAPI.Data;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
@@ -6,6 +7,14 @@ using Microsoft.EntityFrameworkCore;
 using ElearningAPI.Services;
 using Microsoft.OpenApi.Models;
 var builder = WebApplication.CreateBuilder(args);
+
+// Tăng giới hạn kích thước header lên 64KB để tránh lỗi 431 khi JWT token lớn
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.MaxRequestHeadersTotalSize = 65536; // 64 KB
+    options.Limits.MaxRequestHeaderCount = 100;
+});
+
 
 // Add services to the container.
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
@@ -50,14 +59,23 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowReactApp",
         policy =>
         {
-            policy.SetIsOriginAllowed(origin => true)
+            policy.SetIsOriginAllowed(origin => new Uri(origin).Host == "localhost")
                   .AllowAnyHeader()
-                  .AllowAnyMethod();
+                  .AllowAnyMethod()
+                  .AllowCredentials();
         });
 });
 var app = builder.Build();
 
+// Tự động chạy migration khi khởi động (bao gồm reset passwords và xóa base64 avatar)
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    db.Database.Migrate();
+}
+
 // Configure the HTTP request pipeline.
+app.UseStaticFiles(); // Cho phép truy cập file tĩnh trong wwwroot
 app.UseCors("AllowReactApp");
 
 app.UseSwagger();

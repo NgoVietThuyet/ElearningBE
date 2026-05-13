@@ -8,6 +8,10 @@ namespace ElearningAPI.Dtos
         public string Title { get; set; } = string.Empty;
         
         public string Description { get; set; } = string.Empty;
+
+        public string? AvatarUrl { get; set; }
+        
+        public int? TeacherId { get; set; }
     }
 
     public class CourseResponseDto : CourseDto
@@ -15,6 +19,7 @@ namespace ElearningAPI.Dtos
         public int Id { get; set; }
         public int CreatedBy { get; set; }
         public string CreatorName { get; set; } = string.Empty;
+        public string TeacherName { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
     }

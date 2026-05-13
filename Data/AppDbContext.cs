@@ -16,6 +16,7 @@ namespace ElearningAPI.Data
         public DbSet<Test> Tests { get; set; }
         public DbSet<Enrollment> Enrollments { get; set; }
         public DbSet<TestResult> TestResults { get; set; }
+        public DbSet<Feedback> Feedbacks { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
 {
@@ -57,6 +58,24 @@ namespace ElearningAPI.Data
         .WithMany(u => u.CreatedLessons)
         .HasForeignKey(l => l.CreatedBy)
         .OnDelete(DeleteBehavior.Restrict); // Không cho xóa User nếu người đó vẫn còn bài giảng đang lưu
+
+    modelBuilder.Entity<Feedback>()
+        .HasOne(f => f.Course)
+        .WithMany()
+        .HasForeignKey(f => f.CourseId)
+        .OnDelete(DeleteBehavior.Cascade);
+
+    modelBuilder.Entity<Feedback>()
+        .HasOne(f => f.Teacher)
+        .WithMany()
+        .HasForeignKey(f => f.TeacherId)
+        .OnDelete(DeleteBehavior.Restrict);
+
+    modelBuilder.Entity<Feedback>()
+        .HasOne(f => f.Student)
+        .WithMany()
+        .HasForeignKey(f => f.StudentId)
+        .OnDelete(DeleteBehavior.SetNull);
 }
     }
 }

@@ -27,9 +27,19 @@ namespace ElearningAPI.Models
         
         [Required]
         public UserRole Role { get; set; }
+
+        public DateOnly? DateOfBirth { get; set; }
         
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+        
+        public string? AvatarUrl { get; set; }
+
+        public byte[]? AvatarImage { get; set; }
+
+        public string? AvatarContentType { get; set; }
+
+        public string? AvatarFileName { get; set; }
 
         // Navigation properties (Mối quan hệ)
         public ICollection<Course> CreatedCourses { get; set; }

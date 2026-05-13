@@ -15,9 +15,15 @@ namespace ElearningAPI.Models
         
         public string Description { get; set; } = string.Empty;
         
+        public string? AvatarUrl { get; set; }
+        
         public int CreatedBy { get; set; }
         [ForeignKey("CreatedBy")]
         public User? Creator { get; set; }
+        
+        public int? TeacherId { get; set; }
+        [ForeignKey("TeacherId")]
+        public User? Teacher { get; set; }
         
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

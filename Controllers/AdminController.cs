@@ -67,7 +67,7 @@ namespace ElearningAPI.Controllers
         }
 
         [HttpPost("users/create")]
-        public async Task<IActionResult> CreateUser([FromBody] CreateUserDto dto)
+        public async Task<IActionResult> CreateUser([FromForm] CreateUserDto dto)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
 
@@ -83,11 +83,20 @@ namespace ElearningAPI.Controllers
         }
 
         [HttpPut("users/update/{id}")]
-        public async Task<IActionResult> UpdateUser(int id, [FromBody] UpdateUserDto dto)
+        public async Task<IActionResult> UpdateUser(int id, [FromForm] UpdateUserDto dto)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
 
-            var result = await _adminService.UpdateUserAsync(id, dto);
+            UserResponseDto? result;
+            try
+            {
+                result = await _adminService.UpdateUserAsync(id, dto);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+
             if (result == null) return NotFound(new { message = "User not found" });
 
             return Ok(result);

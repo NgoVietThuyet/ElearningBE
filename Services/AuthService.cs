@@ -40,21 +40,12 @@ namespace ElearningAPI.Services
             if (await _context.Users.AsNoTracking().AnyAsync(u => u.Email == dto.Email))
                 return "Email đã tồn tại trong hệ thống.";
 
-            string passwordHash;
-            try
-            {
-                passwordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password, workFactor: 10);
-            }
-            catch
-            {
-                return "Lỗi khi xử lý mật khẩu.";
-            }
-
+            // Lưu mật khẩu dạng plain text (dự án học tập)
             var user = new User
             {
                 FullName = dto.FullName ?? string.Empty,
                 Email = dto.Email,
-                PasswordHash = passwordHash,
+                PasswordHash = dto.Password,
                 Role = UserRole.STUDENT // Mặc định là Student
             };
 
@@ -74,23 +65,39 @@ namespace ElearningAPI.Services
         {
             // Tìm người dùng theo Email
             var user = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Email == dto.Email);
-            
-        // Kiểm tra người dùng và xác thực mật khẩu [cite: 268]
-            if (user == null || !BCrypt.Net.BCrypt.Verify(dto.Password, user.PasswordHash))
-                return null;
-// Nếu đúng, trả về Token xác thực [cite: 269]
+
+            if (user == null) return null;
+
+            // Hỗ trợ cả mật khẩu cũ (BCrypt hash bắt đầu bằng "$2") và mới (plain text)
+            bool isValid;
+            if (user.PasswordHash.StartsWith("$2"))
+            {
+                // Tài khoản cũ có mật khẩu BCrypt
+                isValid = BCrypt.Net.BCrypt.Verify(dto.Password, user.PasswordHash);
+            }
+            else
+            {
+                // Tài khoản mới lưu plain text
+                isValid = user.PasswordHash == dto.Password;
+            }
+
+            if (!isValid) return null;
+
             return CreateToken(user);
         }
 
         private string CreateToken(User user)
         {
-      
             var claims = new List<Claim>
             {
                 new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
                 new Claim(ClaimTypes.Name, user.FullName),
                 new Claim(ClaimTypes.Email, user.Email),
-                new Claim(ClaimTypes.Role, user.Role.ToString())
+                new Claim(ClaimTypes.Role, user.Role.ToString()),
+                // Chỉ nhúng avatarUrl nếu là URL thực (http/https), KHÔNG nhúng base64
+                new Claim("AvatarUrl", (user.AvatarUrl != null && (user.AvatarUrl.StartsWith("http://") || user.AvatarUrl.StartsWith("https://")))
+                    ? user.AvatarUrl
+                    : "")
             };
 
             var jwtKey = _config["Jwt:Key"];

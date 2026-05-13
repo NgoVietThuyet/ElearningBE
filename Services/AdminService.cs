@@ -1,6 +1,7 @@
 using ElearningAPI.Data;
 using ElearningAPI.Dtos;
 using ElearningAPI.Models;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 
 namespace ElearningAPI.Services
@@ -8,25 +9,65 @@ namespace ElearningAPI.Services
     public class AdminService : IAdminService
     {
         private readonly AppDbContext _context;
+        private static readonly HashSet<string> AllowedAvatarTypes = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "image/jpeg",
+            "image/png",
+            "image/gif",
+            "image/webp"
+        };
 
         public AdminService(AppDbContext context)
         {
             _context = context;
         }
 
+        private static UserResponseDto ToUserResponse(User user)
+        {
+            return new UserResponseDto
+            {
+                Id = user.Id,
+                FullName = user.FullName,
+                Email = user.Email,
+                Role = user.Role.ToString(),
+                AvatarUrl = user.AvatarUrl,
+                AvatarImageDataUrl = user.AvatarImage != null && !string.IsNullOrWhiteSpace(user.AvatarContentType)
+                    ? $"data:{user.AvatarContentType};base64,{Convert.ToBase64String(user.AvatarImage)}"
+                    : null,
+                AvatarContentType = user.AvatarContentType,
+                AvatarFileName = user.AvatarFileName,
+                DateOfBirth = user.DateOfBirth,
+                CreatedAt = user.CreatedAt,
+                UpdatedAt = user.UpdatedAt
+            };
+        }
+
+        private static async Task ApplyAvatarAsync(User user, IFormFile? avatarFile)
+        {
+            if (avatarFile == null || avatarFile.Length == 0) return;
+
+            if (!AllowedAvatarTypes.Contains(avatarFile.ContentType))
+                throw new InvalidOperationException("Avatar must be a JPG, PNG, GIF, or WebP image.");
+
+            const long maxAvatarBytes = 2 * 1024 * 1024;
+            if (avatarFile.Length > maxAvatarBytes)
+                throw new InvalidOperationException("Avatar image must be 2MB or smaller.");
+
+            await using var stream = avatarFile.OpenReadStream();
+            using var memory = new MemoryStream();
+            await stream.CopyToAsync(memory);
+
+            user.AvatarImage = memory.ToArray();
+            user.AvatarContentType = avatarFile.ContentType;
+            user.AvatarFileName = Path.GetFileName(avatarFile.FileName);
+            user.AvatarUrl = null;
+        }
+
         // --- User Methods ---
         public async Task<IEnumerable<UserResponseDto>> GetAllUsersAsync()
         {
-            return await _context.Users
-                .Select(u => new UserResponseDto
-                {
-                    Id = u.Id,
-                    FullName = u.FullName,
-                    Email = u.Email,
-                    Role = u.Role.ToString(),
-                    CreatedAt = u.CreatedAt
-                })
-                .ToListAsync();
+            var users = await _context.Users.AsNoTracking().ToListAsync();
+            return users.Select(ToUserResponse);
         }
 
         public async Task<UserResponseDto?> GetUserByIdAsync(int id)
@@ -34,14 +75,7 @@ namespace ElearningAPI.Services
             var u = await _context.Users.FindAsync(id);
             if (u == null) return null;
 
-            return new UserResponseDto
-            {
-                Id = u.Id,
-                FullName = u.FullName,
-                Email = u.Email,
-                Role = u.Role.ToString(),
-                CreatedAt = u.CreatedAt
-            };
+            return ToUserResponse(u);
         }
 
         public async Task<UserResponseDto> CreateUserAsync(CreateUserDto dto)
@@ -56,21 +90,18 @@ namespace ElearningAPI.Services
             {
                 FullName = dto.FullName,
                 Email = dto.Email,
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
-                Role = dto.Role
+                PasswordHash = dto.Password, // Lưu plain text (dự án học tập)
+                Role = dto.Role,
+                DateOfBirth = dto.DateOfBirth,
+                AvatarUrl = dto.AvatarUrl
             };
+
+            await ApplyAvatarAsync(user, dto.AvatarFile);
 
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
 
-            return new UserResponseDto
-            {
-                Id = user.Id,
-                FullName = user.FullName,
-                Email = user.Email,
-                Role = user.Role.ToString(),
-                CreatedAt = user.CreatedAt
-            };
+            return ToUserResponse(user);
         }
 
         public async Task<UserResponseDto?> UpdateUserAsync(int id, UpdateUserDto dto)
@@ -80,18 +111,14 @@ namespace ElearningAPI.Services
 
             user.FullName = dto.FullName;
             user.Role = dto.Role;
+            user.DateOfBirth = dto.DateOfBirth;
+            user.AvatarUrl = dto.AvatarUrl;
+            await ApplyAvatarAsync(user, dto.AvatarFile);
             user.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
 
-            return new UserResponseDto
-            {
-                Id = user.Id,
-                FullName = user.FullName,
-                Email = user.Email,
-                Role = user.Role.ToString(),
-                CreatedAt = user.CreatedAt
-            };
+            return ToUserResponse(user);
         }
 
         public async Task<bool> DeleteUserAsync(int id)
@@ -116,6 +143,7 @@ namespace ElearningAPI.Services
                     Content = n.Content,
                     AuthorId = n.AuthorId,
                     AuthorName = n.Author.FullName,
+                    AvatarUrl = n.AvatarUrl,
                     CreatedAt = n.CreatedAt,
                     UpdatedAt = n.UpdatedAt
                 })
@@ -137,6 +165,7 @@ namespace ElearningAPI.Services
                 Content = news.Content,
                 AuthorId = news.AuthorId,
                 AuthorName = news.Author.FullName,
+                AvatarUrl = news.AvatarUrl,
                 CreatedAt = news.CreatedAt,
                 UpdatedAt = news.UpdatedAt
             };
@@ -148,6 +177,7 @@ namespace ElearningAPI.Services
             {
                 Title = newsDto.Title,
                 Content = newsDto.Content,
+                AvatarUrl = newsDto.AvatarUrl,
                 AuthorId = authorId,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
@@ -166,6 +196,7 @@ namespace ElearningAPI.Services
 
             news.Title = newsDto.Title;
             news.Content = newsDto.Content;
+            news.AvatarUrl = newsDto.AvatarUrl;
             news.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
@@ -194,6 +225,9 @@ namespace ElearningAPI.Services
                     Description = c.Description,
                     CreatedBy = c.CreatedBy,
                     CreatorName = c.Creator != null ? c.Creator.FullName : string.Empty,
+                    TeacherId = c.TeacherId,
+                    TeacherName = c.Teacher != null ? c.Teacher.FullName : string.Empty,
+                    AvatarUrl = c.AvatarUrl,
                     CreatedAt = c.CreatedAt,
                     UpdatedAt = c.UpdatedAt
                 })
@@ -204,6 +238,7 @@ namespace ElearningAPI.Services
         {
             var course = await _context.Courses
                 .Include(c => c.Creator)
+                .Include(c => c.Teacher)
                 .FirstOrDefaultAsync(c => c.Id == id);
 
             if (course == null) return null;
@@ -215,6 +250,9 @@ namespace ElearningAPI.Services
                 Description = course.Description,
                 CreatedBy = course.CreatedBy,
                 CreatorName = course.Creator != null ? course.Creator.FullName : string.Empty,
+                TeacherId = course.TeacherId,
+                TeacherName = course.Teacher != null ? course.Teacher.FullName : string.Empty,
+                AvatarUrl = course.AvatarUrl,
                 CreatedAt = course.CreatedAt,
                 UpdatedAt = course.UpdatedAt
             };
@@ -226,7 +264,9 @@ namespace ElearningAPI.Services
             {
                 Title = courseDto.Title,
                 Description = courseDto.Description,
+                AvatarUrl = courseDto.AvatarUrl,
                 CreatedBy = adminId,
+                TeacherId = courseDto.TeacherId,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             };
@@ -244,6 +284,8 @@ namespace ElearningAPI.Services
 
             course.Title = courseDto.Title;
             course.Description = courseDto.Description;
+            course.AvatarUrl = courseDto.AvatarUrl;
+            course.TeacherId = courseDto.TeacherId;
             course.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
