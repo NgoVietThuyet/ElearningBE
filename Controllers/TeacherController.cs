@@ -95,7 +95,7 @@ namespace ElearningAPI.Controllers
         }
 
         [HttpPost("lessons")]
-        public async Task<IActionResult> CreateLesson([FromBody] LessonDto dto)
+        public async Task<IActionResult> CreateLesson([FromForm] LessonDto dto)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
 
@@ -105,7 +105,7 @@ namespace ElearningAPI.Controllers
         }
 
         [HttpPut("lessons/{lessonId}")]
-        public async Task<IActionResult> UpdateLesson(int lessonId, [FromBody] LessonDto dto)
+        public async Task<IActionResult> UpdateLesson(int lessonId, [FromForm] LessonDto dto)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
 
@@ -129,7 +129,7 @@ namespace ElearningAPI.Controllers
         }
 
         [HttpPost("lessons/{lessonId}/learning-items")]
-        public async Task<IActionResult> CreateLearningItem(int lessonId, [FromBody] LearningItemDto dto)
+        public async Task<IActionResult> CreateLearningItem(int lessonId, [FromBody] TeacherLearningItemDto dto)
         {
             var result = await _teacherService.CreateLearningItem(GetUserId(), lessonId, dto.Title, dto.Content);
             if (result == null) return NotFound(new { Message = "Khong tim thay bai giang." });
@@ -137,7 +137,7 @@ namespace ElearningAPI.Controllers
         }
 
         [HttpPut("learning-items/{testId}")]
-        public async Task<IActionResult> UpdateLearningItem(int testId, [FromBody] LearningItemDto dto)
+        public async Task<IActionResult> UpdateLearningItem(int testId, [FromBody] TeacherLearningItemDto dto)
         {
             var result = await _teacherService.UpdateLearningItem(GetUserId(), testId, dto.Title, dto.Content);
             if (result == null) return NotFound(new { Message = "Khong tim thay noi dung hoc tap." });
@@ -183,7 +183,7 @@ namespace ElearningAPI.Controllers
         public string FullName { get; set; } = string.Empty;
     }
 
-    public class LearningItemDto
+    public class TeacherLearningItemDto
     {
         public string Title { get; set; } = string.Empty;
         public string Content { get; set; } = string.Empty;

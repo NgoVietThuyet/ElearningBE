@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Http;
 
 namespace ElearningAPI.Dtos
 {
@@ -17,6 +18,16 @@ namespace ElearningAPI.Dtos
         
         [MaxLength(255)]
         public string PdfUrl { get; set; } = string.Empty;
+
+        [MaxLength(500)]
+        public string? DocumentUrl { get; set; }
+
+        [MaxLength(255)]
+        public string? DocumentName { get; set; }
+
+        public IFormFile? PdfFile { get; set; }
+
+        public IFormFile? DocumentFile { get; set; }
     }
 
     public class LessonResponseDto : LessonDto

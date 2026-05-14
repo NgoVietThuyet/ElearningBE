@@ -179,8 +179,15 @@ namespace ElearningAPI.Controllers
             if (!ModelState.IsValid) return BadRequest(ModelState);
 
             var adminId = GetCurrentUserId();
-            var result = await _adminService.CreateCourseAsync(dto, adminId);
-            return CreatedAtAction(nameof(GetCourseById), new { id = result.Id }, result);
+            try
+            {
+                var result = await _adminService.CreateCourseAsync(dto, adminId);
+                return CreatedAtAction(nameof(GetCourseById), new { id = result.Id }, result);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         [HttpPut("courses/update/{id}")]
@@ -188,10 +195,17 @@ namespace ElearningAPI.Controllers
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
 
-            var result = await _adminService.UpdateCourseAsync(id, dto);
-            if (result == null) return NotFound(new { message = "Course not found" });
+            try
+            {
+                var result = await _adminService.UpdateCourseAsync(id, dto);
+                if (result == null) return NotFound(new { message = "Course not found" });
 
-            return Ok(result);
+                return Ok(result);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         [HttpDelete("courses/delete/{id}")]
@@ -220,7 +234,7 @@ namespace ElearningAPI.Controllers
         }
 
         [HttpPost("lessons/create")]
-        public async Task<IActionResult> CreateLesson([FromBody] LessonDto dto)
+        public async Task<IActionResult> CreateLesson([FromForm] LessonDto dto)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
 
@@ -232,7 +246,7 @@ namespace ElearningAPI.Controllers
         }
 
         [HttpPut("lessons/update/{id}")]
-        public async Task<IActionResult> UpdateLesson(int id, [FromBody] LessonDto dto)
+        public async Task<IActionResult> UpdateLesson(int id, [FromForm] LessonDto dto)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
 
@@ -249,6 +263,92 @@ namespace ElearningAPI.Controllers
             if (!success) return NotFound(new { message = "Lesson not found" });
 
             return Ok(new { message = "Lesson deleted successfully" });
+        }
+
+        [HttpGet("courses/{courseId}/materials")]
+        public async Task<IActionResult> GetCourseMaterials(int courseId)
+        {
+            return Ok(await _adminService.GetCourseMaterialsAsync(courseId));
+        }
+
+        [HttpPost("course-materials/create")]
+        public async Task<IActionResult> CreateCourseMaterial([FromBody] CourseMaterialDto dto)
+        {
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+
+            var result = await _adminService.CreateCourseMaterialAsync(dto);
+            if (result == null) return NotFound(new { message = "Course not found" });
+
+            return Ok(result);
+        }
+
+        [HttpPut("course-materials/update/{id}")]
+        public async Task<IActionResult> UpdateCourseMaterial(int id, [FromBody] CourseMaterialDto dto)
+        {
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+
+            var result = await _adminService.UpdateCourseMaterialAsync(id, dto);
+            if (result == null) return NotFound(new { message = "Material or course not found" });
+
+            return Ok(result);
+        }
+
+        [HttpDelete("course-materials/delete/{id}")]
+        public async Task<IActionResult> DeleteCourseMaterial(int id)
+        {
+            var success = await _adminService.DeleteCourseMaterialAsync(id);
+            if (!success) return NotFound(new { message = "Material not found" });
+
+            return Ok(new { message = "Material deleted successfully" });
+        }
+
+        [HttpGet("courses/{courseId}/learning-items")]
+        public async Task<IActionResult> GetCourseLearningItems(int courseId)
+        {
+            return Ok(await _adminService.GetCourseLearningItemsAsync(courseId));
+        }
+
+        [HttpPost("learning-items/create")]
+        public async Task<IActionResult> CreateLearningItem([FromBody] ElearningAPI.Dtos.LearningItemDto dto)
+        {
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+
+            try
+            {
+                var result = await _adminService.CreateLearningItemAsync(dto);
+                if (result == null) return NotFound(new { message = "Lesson or course not found" });
+                return Ok(result);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpPut("learning-items/update/{id}")]
+        public async Task<IActionResult> UpdateLearningItem(int id, [FromBody] ElearningAPI.Dtos.LearningItemDto dto)
+        {
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+
+            try
+            {
+                var result = await _adminService.UpdateLearningItemAsync(id, dto);
+                if (result == null) return NotFound(new { message = "Learning item, lesson, or course not found" });
+                return Ok(result);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpDelete("learning-items/delete/{id}")]
+        public async Task<IActionResult> DeleteLearningItem(int id)
+        {
+            var success = await _adminService.DeleteLearningItemAsync(id);
+            if (!success) return NotFound(new { message = "Learning item not found" });
+
+            return Ok(new { message = "Learning item deleted successfully" });
         }
     }
 }

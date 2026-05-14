@@ -24,6 +24,28 @@ namespace ElearningAPI.Models
         
         [MaxLength(255)]
         public string PdfUrl { get; set; }
+
+        [MaxLength(500)]
+        public string? DocumentUrl { get; set; }
+
+        [MaxLength(255)]
+        public string? DocumentName { get; set; }
+
+        public byte[]? PdfFile { get; set; }
+
+        [MaxLength(120)]
+        public string? PdfContentType { get; set; }
+
+        [MaxLength(255)]
+        public string? PdfFileName { get; set; }
+
+        public byte[]? DocumentFile { get; set; }
+
+        [MaxLength(120)]
+        public string? DocumentContentType { get; set; }
+
+        [MaxLength(255)]
+        public string? DocumentFileName { get; set; }
         
         public int CreatedBy { get; set; }
         [ForeignKey("CreatedBy")]

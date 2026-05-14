@@ -17,13 +17,26 @@ namespace ElearningAPI.Models
         
         public string? AvatarUrl { get; set; }
 
+        [MaxLength(50)]
+        public string Code { get; set; } = string.Empty;
+
+        public string? IntroVideoUrl { get; set; }
+
         [MaxLength(100)]
         public string Category { get; set; } = "Sinh học";
 
         [MaxLength(30)]
         public string Status { get; set; } = "Published";
 
+        [MaxLength(50)]
+        public string Level { get; set; } = string.Empty;
+
+        [MaxLength(50)]
+        public string Language { get; set; } = "Tiếng Việt";
+
         public int DurationMinutes { get; set; } = 0;
+
+        public int ExpectedStudentCount { get; set; } = 0;
 
         public DateTime? StartDate { get; set; }
 
@@ -44,5 +57,6 @@ namespace ElearningAPI.Models
 
         public ICollection<Lesson> Lessons { get; set; } = new List<Lesson>();
         public ICollection<Enrollment> Enrollments { get; set; } = new List<Enrollment>();
+        public ICollection<CourseMaterial> Materials { get; set; } = new List<CourseMaterial>();
     }
 }

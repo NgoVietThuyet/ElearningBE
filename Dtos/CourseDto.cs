@@ -10,6 +10,11 @@ namespace ElearningAPI.Dtos
         public string Description { get; set; } = string.Empty;
 
         public string? AvatarUrl { get; set; }
+
+        [MaxLength(50)]
+        public string Code { get; set; } = string.Empty;
+
+        public string? IntroVideoUrl { get; set; }
         
         public int? TeacherId { get; set; }
 
@@ -19,7 +24,15 @@ namespace ElearningAPI.Dtos
         [MaxLength(30)]
         public string Status { get; set; } = "Published";
 
+        [MaxLength(50)]
+        public string Level { get; set; } = string.Empty;
+
+        [MaxLength(50)]
+        public string Language { get; set; } = "Tiếng Việt";
+
         public int DurationMinutes { get; set; } = 0;
+
+        public int ExpectedStudentCount { get; set; } = 0;
 
         public DateTime? StartDate { get; set; }
 

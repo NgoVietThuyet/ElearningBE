@@ -33,16 +33,21 @@ namespace ElearningAPI.Controllers
                     c.Title,
                     c.Description,
                     c.AvatarUrl,
+                    c.Code,
+                    c.IntroVideoUrl,
                     c.Category,
                     c.Status,
+                    c.Level,
+                    c.Language,
                     c.DurationMinutes,
+                    c.ExpectedStudentCount,
                     c.StartDate,
                     c.EndDate,
                     c.LearningOutcomes,
                     CreatorName = c.Creator != null ? c.Creator.FullName : "Admin",
                     TeacherName = c.Teacher != null ? c.Teacher.FullName : string.Empty,
                     LessonCount = c.Lessons.Count,
-                    StudentCount = c.Enrollments.Count,
+                    StudentCount = c.ExpectedStudentCount > 0 ? c.ExpectedStudentCount : c.Enrollments.Count,
                     AverageProgress = c.Enrollments.Any() ? c.Enrollments.Average(e => e.ProgressPercentage) : 0,
                     c.CreatedAt
                 })
@@ -93,9 +98,14 @@ namespace ElearningAPI.Controllers
                 course.Title,
                 course.Description,
                 course.AvatarUrl,
+                course.Code,
+                course.IntroVideoUrl,
                 course.Category,
                 course.Status,
+                course.Level,
+                course.Language,
                 course.DurationMinutes,
+                course.ExpectedStudentCount,
                 course.StartDate,
                 course.EndDate,
                 course.LearningOutcomes,
@@ -104,7 +114,7 @@ namespace ElearningAPI.Controllers
                 TeacherName = course.Teacher != null ? course.Teacher.FullName : string.Empty,
                 TeacherAvatarUrl = course.Teacher != null ? course.Teacher.AvatarUrl : null,
                 LessonCount = course.Lessons.Count,
-                StudentCount = course.Enrollments.Count,
+                StudentCount = course.ExpectedStudentCount > 0 ? course.ExpectedStudentCount : course.Enrollments.Count,
                 AverageProgress = course.Enrollments.Any() ? course.Enrollments.Average(e => e.ProgressPercentage) : 0,
                 course.CreatedAt,
                 Lessons = course.Lessons.OrderBy(l => l.CreatedAt).Select(l => new
@@ -113,7 +123,9 @@ namespace ElearningAPI.Controllers
                     l.Title,
                     l.Description,
                     l.VideoUrl,
-                    l.PdfUrl
+                    PdfUrl = l.PdfFile != null && l.PdfFile.Length > 0 ? $"/api/public/lessons/{l.Id}/pdf" : l.PdfUrl,
+                    DocumentUrl = l.DocumentFile != null && l.DocumentFile.Length > 0 ? $"/api/public/lessons/{l.Id}/document" : l.DocumentUrl,
+                    DocumentName = l.DocumentFileName ?? l.DocumentName
                 }),
                 Students = course.Enrollments.Select(e => new
                 {
@@ -123,6 +135,47 @@ namespace ElearningAPI.Controllers
                     EnrolledAt = e.EnrolledAt
                 })
             });
+        }
+
+        [HttpGet("lessons/{lessonId}/pdf")]
+        public async Task<IActionResult> GetLessonPdf(int lessonId)
+        {
+            var lesson = await _context.Lessons.FirstOrDefaultAsync(l => l.Id == lessonId);
+            if (lesson == null) return NotFound();
+
+            if (lesson.PdfFile != null && lesson.PdfFile.Length > 0)
+            {
+                return File(lesson.PdfFile, lesson.PdfContentType ?? "application/pdf", lesson.PdfFileName ?? $"lesson-{lessonId}.pdf");
+            }
+
+            if (!string.IsNullOrWhiteSpace(lesson.PdfUrl))
+            {
+                return Redirect(lesson.PdfUrl);
+            }
+
+            return NotFound();
+        }
+
+        [HttpGet("lessons/{lessonId}/document")]
+        public async Task<IActionResult> GetLessonDocument(int lessonId)
+        {
+            var lesson = await _context.Lessons.FirstOrDefaultAsync(l => l.Id == lessonId);
+            if (lesson == null) return NotFound();
+
+            if (lesson.DocumentFile != null && lesson.DocumentFile.Length > 0)
+            {
+                return File(
+                    lesson.DocumentFile,
+                    lesson.DocumentContentType ?? "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    lesson.DocumentFileName ?? lesson.DocumentName ?? $"lesson-{lessonId}.docx");
+            }
+
+            if (!string.IsNullOrWhiteSpace(lesson.DocumentUrl))
+            {
+                return Redirect(lesson.DocumentUrl);
+            }
+
+            return NotFound();
         }
 
         /// <summary>GET /api/public/news/{id} — Lấy chi tiết tin tức</summary>
@@ -187,6 +240,31 @@ namespace ElearningAPI.Controllers
                 })
                 .OrderByDescending(t => t.Score)
                 .Take(4)
+                .ToListAsync();
+
+            return Ok(teachers);
+        }
+
+        /// <summary>GET /api/public/teachers — Lấy toàn bộ giảng viên để tìm kiếm public</summary>
+        [HttpGet("teachers")]
+        public async Task<IActionResult> GetTeachers()
+        {
+            var teachers = await _context.Users
+                .Where(u => u.Role == UserRole.TEACHER)
+                .Select(u => new
+                {
+                    u.Id,
+                    u.FullName,
+                    u.Email,
+                    AvatarUrl = (u.AvatarUrl != null && (u.AvatarUrl.StartsWith("http://") || u.AvatarUrl.StartsWith("https://")))
+                        ? u.AvatarUrl
+                        : null,
+                    StudentCount = u.StudentsManaged.Count,
+                    LessonCount = u.CreatedLessons.Count,
+                    Score = (u.StudentsManaged.Count + u.CreatedLessons.Count) / 2.0
+                })
+                .OrderByDescending(t => t.Score)
+                .ThenBy(t => t.FullName)
                 .ToListAsync();
 
             return Ok(teachers);

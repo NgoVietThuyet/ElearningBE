@@ -12,6 +12,7 @@ namespace ElearningAPI.Data
         public DbSet<TeacherStudent> TeacherStudents { get; set; }
         public DbSet<News> News { get; set; }
         public DbSet<Course> Courses { get; set; }
+        public DbSet<CourseMaterial> CourseMaterials { get; set; }
         public DbSet<Lesson> Lessons { get; set; }
         public DbSet<Test> Tests { get; set; }
         public DbSet<Enrollment> Enrollments { get; set; }
@@ -51,6 +52,12 @@ namespace ElearningAPI.Data
         .HasOne(c => c.Creator)
         .WithMany(u => u.CreatedCourses)
         .HasForeignKey(c => c.CreatedBy)
+        .OnDelete(DeleteBehavior.Cascade);
+
+    modelBuilder.Entity<CourseMaterial>()
+        .HasOne(m => m.Course)
+        .WithMany(c => c.Materials)
+        .HasForeignKey(m => m.CourseId)
         .OnDelete(DeleteBehavior.Cascade);
         
     modelBuilder.Entity<Lesson>()

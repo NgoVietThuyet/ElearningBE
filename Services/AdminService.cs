@@ -16,14 +16,148 @@ namespace ElearningAPI.Services
             "image/gif",
             "image/webp"
         };
+        private static readonly HashSet<string> AllowedPdfTypes = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "application/pdf"
+        };
+        private static readonly HashSet<string> AllowedDocumentTypes = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "application/msword",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        };
+
+        private static readonly System.Text.Json.JsonSerializerOptions JsonOptions = new()
+        {
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+            PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase,
+            WriteIndented = false
+        };
 
         public AdminService(AppDbContext context)
         {
             _context = context;
         }
 
-        private static UserResponseDto ToUserResponse(User user)
+        private static DateTime? NormalizeUtcDate(DateTime? value)
         {
+            if (!value.HasValue) return null;
+
+            return value.Value.Kind switch
+            {
+                DateTimeKind.Utc => value.Value,
+                DateTimeKind.Local => value.Value.ToUniversalTime(),
+                _ => DateTime.SpecifyKind(value.Value, DateTimeKind.Utc)
+            };
+        }
+
+        private static string? NormalizeNullableText(string? value)
+        {
+            return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+        }
+
+        private async Task<int?> NormalizeTeacherIdAsync(int? teacherId)
+        {
+            if (!teacherId.HasValue || teacherId.Value <= 0) return null;
+
+            var exists = await _context.Users.AnyAsync(u => u.Id == teacherId.Value && u.Role == UserRole.TEACHER);
+            if (!exists)
+                throw new InvalidOperationException("Giảng viên không tồn tại hoặc không đúng vai trò.");
+
+            return teacherId.Value;
+        }
+
+        private async Task NormalizeCourseDtoAsync(CourseDto courseDto)
+        {
+            courseDto.Title = courseDto.Title?.Trim() ?? string.Empty;
+            courseDto.Description = courseDto.Description?.Trim() ?? string.Empty;
+            courseDto.AvatarUrl = string.IsNullOrWhiteSpace(courseDto.AvatarUrl) ? null : courseDto.AvatarUrl.Trim();
+            courseDto.Code = courseDto.Code?.Trim().ToUpperInvariant() ?? string.Empty;
+            courseDto.IntroVideoUrl = string.IsNullOrWhiteSpace(courseDto.IntroVideoUrl) ? null : courseDto.IntroVideoUrl.Trim();
+            courseDto.Category = string.IsNullOrWhiteSpace(courseDto.Category) ? "Sinh học" : courseDto.Category.Trim();
+            courseDto.Status = string.IsNullOrWhiteSpace(courseDto.Status) ? "Published" : courseDto.Status.Trim();
+            courseDto.Level = courseDto.Level?.Trim() ?? string.Empty;
+            courseDto.Language = string.IsNullOrWhiteSpace(courseDto.Language) ? "Tiếng Việt" : courseDto.Language.Trim();
+            courseDto.DurationMinutes = Math.Max(0, courseDto.DurationMinutes);
+            courseDto.ExpectedStudentCount = Math.Max(0, courseDto.ExpectedStudentCount);
+            courseDto.StartDate = NormalizeUtcDate(courseDto.StartDate);
+            courseDto.EndDate = NormalizeUtcDate(courseDto.EndDate);
+            courseDto.LearningOutcomes = courseDto.LearningOutcomes?.Trim() ?? string.Empty;
+            courseDto.TeacherId = await NormalizeTeacherIdAsync(courseDto.TeacherId);
+
+            if (courseDto.EndDate.HasValue && courseDto.StartDate.HasValue && courseDto.EndDate < courseDto.StartDate)
+                throw new InvalidOperationException("Ngày kết thúc phải lớn hơn hoặc bằng ngày bắt đầu.");
+        }
+
+        private async Task<int?> NormalizeAssignedCourseIdAsync(CreateUserDto dto)
+        {
+            dto.FullName = dto.FullName?.Trim() ?? string.Empty;
+            dto.Email = dto.Email?.Trim() ?? string.Empty;
+            dto.Gender = NormalizeNullableText(dto.Gender);
+            dto.PhoneNumber = NormalizeNullableText(dto.PhoneNumber);
+            dto.Address = NormalizeNullableText(dto.Address);
+            dto.ShortBio = NormalizeNullableText(dto.ShortBio);
+            dto.AvatarUrl = NormalizeNullableText(dto.AvatarUrl);
+            dto.TeachingExperienceYears = Math.Max(0, dto.TeachingExperienceYears);
+
+            if (dto.Role != UserRole.TEACHER)
+            {
+                dto.Gender = null;
+                dto.PhoneNumber = null;
+                dto.Address = null;
+                dto.ShortBio = null;
+                dto.TeachingExperienceYears = 0;
+                dto.IsActive = true;
+                return null;
+            }
+
+            if (!dto.AssignedCourseId.HasValue || dto.AssignedCourseId.Value <= 0) return null;
+
+            var courseExists = await _context.Courses.AnyAsync(c => c.Id == dto.AssignedCourseId.Value);
+            if (!courseExists)
+                throw new InvalidOperationException("Khóa học phụ trách không tồn tại.");
+
+            return dto.AssignedCourseId.Value;
+        }
+
+        private async Task<int?> NormalizeAssignedCourseIdAsync(UpdateUserDto dto)
+        {
+            dto.FullName = dto.FullName?.Trim() ?? string.Empty;
+            dto.Gender = NormalizeNullableText(dto.Gender);
+            dto.PhoneNumber = NormalizeNullableText(dto.PhoneNumber);
+            dto.Address = NormalizeNullableText(dto.Address);
+            dto.ShortBio = NormalizeNullableText(dto.ShortBio);
+            dto.AvatarUrl = NormalizeNullableText(dto.AvatarUrl);
+            dto.TeachingExperienceYears = Math.Max(0, dto.TeachingExperienceYears);
+
+            if (dto.Role != UserRole.TEACHER)
+            {
+                dto.Gender = null;
+                dto.PhoneNumber = null;
+                dto.Address = null;
+                dto.ShortBio = null;
+                dto.TeachingExperienceYears = 0;
+                dto.IsActive = true;
+                return null;
+            }
+
+            if (!dto.AssignedCourseId.HasValue || dto.AssignedCourseId.Value <= 0) return null;
+
+            var courseExists = await _context.Courses.AnyAsync(c => c.Id == dto.AssignedCourseId.Value);
+            if (!courseExists)
+                throw new InvalidOperationException("Khóa học phụ trách không tồn tại.");
+
+            return dto.AssignedCourseId.Value;
+        }
+
+        private UserResponseDto ToUserResponse(User user)
+        {
+            var assignedCourse = _context.Courses
+                .AsNoTracking()
+                .Where(c => c.TeacherId == user.Id)
+                .OrderByDescending(c => c.UpdatedAt)
+                .Select(c => new { c.Id, c.Title })
+                .FirstOrDefault();
+
             return new UserResponseDto
             {
                 Id = user.Id,
@@ -37,6 +171,14 @@ namespace ElearningAPI.Services
                 AvatarContentType = user.AvatarContentType,
                 AvatarFileName = user.AvatarFileName,
                 DateOfBirth = user.DateOfBirth,
+                Gender = user.Gender,
+                PhoneNumber = user.PhoneNumber,
+                Address = user.Address,
+                TeachingExperienceYears = user.TeachingExperienceYears,
+                ShortBio = user.ShortBio,
+                IsActive = user.IsActive,
+                AssignedCourseId = assignedCourse?.Id,
+                AssignedCourseTitle = assignedCourse?.Title,
                 CreatedAt = user.CreatedAt,
                 UpdatedAt = user.UpdatedAt
             };
@@ -63,6 +205,129 @@ namespace ElearningAPI.Services
             user.AvatarUrl = null;
         }
 
+        private static async Task<byte[]> ReadFormFileAsync(IFormFile file)
+        {
+            await using var stream = file.OpenReadStream();
+            using var memory = new MemoryStream();
+            await stream.CopyToAsync(memory);
+            return memory.ToArray();
+        }
+
+        private static async Task ApplyLessonFilesAsync(Lesson lesson, LessonDto dto)
+        {
+            if (dto.PdfFile is { Length: > 0 })
+            {
+                if (!AllowedPdfTypes.Contains(dto.PdfFile.ContentType))
+                    throw new InvalidOperationException("Tệp PDF không hợp lệ.");
+
+                lesson.PdfFile = await ReadFormFileAsync(dto.PdfFile);
+                lesson.PdfContentType = dto.PdfFile.ContentType;
+                lesson.PdfFileName = Path.GetFileName(dto.PdfFile.FileName);
+                lesson.PdfUrl = string.Empty;
+            }
+
+            if (dto.DocumentFile is { Length: > 0 })
+            {
+                if (!AllowedDocumentTypes.Contains(dto.DocumentFile.ContentType))
+                    throw new InvalidOperationException("Tệp Word không hợp lệ. Chỉ hỗ trợ DOC hoặc DOCX.");
+
+                lesson.DocumentFile = await ReadFormFileAsync(dto.DocumentFile);
+                lesson.DocumentContentType = dto.DocumentFile.ContentType;
+                lesson.DocumentFileName = Path.GetFileName(dto.DocumentFile.FileName);
+                lesson.DocumentName = lesson.DocumentFileName;
+                lesson.DocumentUrl = null;
+            }
+        }
+
+        private static string ResolveLessonPdfUrl(Lesson lesson)
+        {
+            if (lesson.PdfFile != null && lesson.PdfFile.Length > 0)
+                return $"/api/public/lessons/{lesson.Id}/pdf";
+
+            return lesson.PdfUrl;
+        }
+
+        private static string? ResolveLessonDocumentUrl(Lesson lesson)
+        {
+            if (lesson.DocumentFile != null && lesson.DocumentFile.Length > 0)
+                return $"/api/public/lessons/{lesson.Id}/document";
+
+            return lesson.DocumentUrl;
+        }
+
+        private static CourseMaterialResponseDto ToCourseMaterialResponse(CourseMaterial material)
+        {
+            return new CourseMaterialResponseDto
+            {
+                Id = material.Id,
+                CourseId = material.CourseId,
+                Title = material.Title,
+                FileUrl = material.FileUrl,
+                FileType = material.FileType,
+                MimeType = material.MimeType,
+                Description = material.Description,
+                CreatedAt = material.CreatedAt,
+                UpdatedAt = material.UpdatedAt
+            };
+        }
+
+        private static LearningItemResponseDto ToLearningItemResponse(Test item, string type)
+        {
+            return new LearningItemResponseDto
+            {
+                Id = item.Id,
+                CourseId = item.Lesson.CourseId,
+                LessonId = item.LessonId,
+                Title = item.Title,
+                Type = type,
+                Content = item.Content,
+                CreatedAt = item.CreatedAt
+            };
+        }
+
+        private static string GetLearningItemType(string content)
+        {
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(content);
+                return doc.RootElement.TryGetProperty("type", out var type)
+                    ? (type.GetString() ?? "quiz").Trim().ToLowerInvariant()
+                    : "quiz";
+            }
+            catch
+            {
+                return "unknown";
+            }
+        }
+
+        private static string NormalizeLearningItemType(string? type)
+        {
+            var normalized = (type ?? string.Empty).Trim().ToLowerInvariant();
+            return normalized switch
+            {
+                "flashcard" => "flashcard",
+                "quiz" => "quiz",
+                "exam" => "exam",
+                _ => throw new InvalidOperationException("Loại học liệu không hợp lệ.")
+            };
+        }
+
+        private static string NormalizeJsonContent(string content, string type)
+        {
+            try
+            {
+                var node = System.Text.Json.Nodes.JsonNode.Parse(content)?.AsObject()
+                    ?? throw new InvalidOperationException("Nội dung học liệu phải là object JSON hợp lệ.");
+
+                node["type"] = type;
+                return System.Text.Json.JsonSerializer.Serialize(node, JsonOptions);
+            }
+            catch
+            {
+                throw new InvalidOperationException("Nội dung học liệu phải là JSON hợp lệ.");
+            }
+        }
+
         // --- User Methods ---
         public async Task<IEnumerable<UserResponseDto>> GetAllUsersAsync()
         {
@@ -80,19 +345,26 @@ namespace ElearningAPI.Services
 
         public async Task<UserResponseDto> CreateUserAsync(CreateUserDto dto)
         {
-            // Check if email already exists
             if (await _context.Users.AnyAsync(x => x.Email == dto.Email))
             {
                 throw new InvalidOperationException("Email already exists.");
             }
 
+            var assignedCourseId = await NormalizeAssignedCourseIdAsync(dto);
+
             var user = new User
             {
                 FullName = dto.FullName,
                 Email = dto.Email,
-                PasswordHash = dto.Password, // Lưu plain text (dự án học tập)
+                PasswordHash = dto.Password,
                 Role = dto.Role,
                 DateOfBirth = dto.DateOfBirth,
+                Gender = dto.Gender,
+                PhoneNumber = dto.PhoneNumber,
+                Address = dto.Address,
+                TeachingExperienceYears = dto.TeachingExperienceYears,
+                ShortBio = dto.ShortBio,
+                IsActive = dto.IsActive,
                 AvatarUrl = dto.AvatarUrl
             };
 
@@ -100,6 +372,17 @@ namespace ElearningAPI.Services
 
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
+
+            if (assignedCourseId.HasValue)
+            {
+                var course = await _context.Courses.FindAsync(assignedCourseId.Value);
+                if (course != null)
+                {
+                    course.TeacherId = user.Id;
+                    course.UpdatedAt = DateTime.UtcNow;
+                    await _context.SaveChangesAsync();
+                }
+            }
 
             return ToUserResponse(user);
         }
@@ -109,12 +392,42 @@ namespace ElearningAPI.Services
             var user = await _context.Users.FindAsync(id);
             if (user == null) return null;
 
+            var assignedCourseId = await NormalizeAssignedCourseIdAsync(dto);
+
             user.FullName = dto.FullName;
             user.Role = dto.Role;
             user.DateOfBirth = dto.DateOfBirth;
+            user.Gender = dto.Gender;
+            user.PhoneNumber = dto.PhoneNumber;
+            user.Address = dto.Address;
+            user.TeachingExperienceYears = dto.TeachingExperienceYears;
+            user.ShortBio = dto.ShortBio;
+            user.IsActive = dto.IsActive;
             user.AvatarUrl = dto.AvatarUrl;
             await ApplyAvatarAsync(user, dto.AvatarFile);
             user.UpdatedAt = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            var teacherCourses = await _context.Courses.Where(c => c.TeacherId == user.Id).ToListAsync();
+            foreach (var course in teacherCourses)
+            {
+                if (user.Role != UserRole.TEACHER || !assignedCourseId.HasValue || course.Id != assignedCourseId.Value)
+                {
+                    course.TeacherId = null;
+                    course.UpdatedAt = DateTime.UtcNow;
+                }
+            }
+
+            if (user.Role == UserRole.TEACHER && assignedCourseId.HasValue)
+            {
+                var assignedCourse = await _context.Courses.FindAsync(assignedCourseId.Value);
+                if (assignedCourse != null)
+                {
+                    assignedCourse.TeacherId = user.Id;
+                    assignedCourse.UpdatedAt = DateTime.UtcNow;
+                }
+            }
 
             await _context.SaveChangesAsync();
 
@@ -226,9 +539,14 @@ namespace ElearningAPI.Services
                     Id = c.Id,
                     Title = c.Title,
                     Description = c.Description,
+                    Code = c.Code,
+                    IntroVideoUrl = c.IntroVideoUrl,
                     Category = c.Category,
                     Status = c.Status,
+                    Level = c.Level,
+                    Language = c.Language,
                     DurationMinutes = c.DurationMinutes,
+                    ExpectedStudentCount = c.ExpectedStudentCount,
                     StartDate = c.StartDate,
                     EndDate = c.EndDate,
                     LearningOutcomes = c.LearningOutcomes,
@@ -239,7 +557,7 @@ namespace ElearningAPI.Services
                     TeacherAvatarUrl = c.Teacher != null ? c.Teacher.AvatarUrl : null,
                     AvatarUrl = c.AvatarUrl,
                     LessonCount = c.Lessons.Count,
-                    StudentCount = c.Enrollments.Count,
+                    StudentCount = c.ExpectedStudentCount > 0 ? c.ExpectedStudentCount : c.Enrollments.Count,
                     AverageProgress = c.Enrollments.Any() ? c.Enrollments.Average(e => e.ProgressPercentage) : 0,
                     CreatedAt = c.CreatedAt,
                     UpdatedAt = c.UpdatedAt
@@ -263,9 +581,14 @@ namespace ElearningAPI.Services
                 Id = course.Id,
                 Title = course.Title,
                 Description = course.Description,
+                Code = course.Code,
+                IntroVideoUrl = course.IntroVideoUrl,
                 Category = course.Category,
                 Status = course.Status,
+                Level = course.Level,
+                Language = course.Language,
                 DurationMinutes = course.DurationMinutes,
+                ExpectedStudentCount = course.ExpectedStudentCount,
                 StartDate = course.StartDate,
                 EndDate = course.EndDate,
                 LearningOutcomes = course.LearningOutcomes,
@@ -276,7 +599,7 @@ namespace ElearningAPI.Services
                 TeacherAvatarUrl = course.Teacher != null ? course.Teacher.AvatarUrl : null,
                 AvatarUrl = course.AvatarUrl,
                 LessonCount = course.Lessons.Count,
-                StudentCount = course.Enrollments.Count,
+                StudentCount = course.ExpectedStudentCount > 0 ? course.ExpectedStudentCount : course.Enrollments.Count,
                 AverageProgress = course.Enrollments.Any() ? course.Enrollments.Average(e => e.ProgressPercentage) : 0,
                 CreatedAt = course.CreatedAt,
                 UpdatedAt = course.UpdatedAt
@@ -285,14 +608,21 @@ namespace ElearningAPI.Services
 
         public async Task<CourseResponseDto> CreateCourseAsync(CourseDto courseDto, int adminId)
         {
+            await NormalizeCourseDtoAsync(courseDto);
+
             var course = new Course
             {
                 Title = courseDto.Title,
                 Description = courseDto.Description,
                 AvatarUrl = courseDto.AvatarUrl,
+                Code = courseDto.Code,
+                IntroVideoUrl = courseDto.IntroVideoUrl,
                 Category = courseDto.Category,
                 Status = courseDto.Status,
+                Level = courseDto.Level,
+                Language = courseDto.Language,
                 DurationMinutes = courseDto.DurationMinutes,
+                ExpectedStudentCount = courseDto.ExpectedStudentCount,
                 StartDate = courseDto.StartDate,
                 EndDate = courseDto.EndDate,
                 LearningOutcomes = courseDto.LearningOutcomes,
@@ -313,12 +643,19 @@ namespace ElearningAPI.Services
             var course = await _context.Courses.FindAsync(id);
             if (course == null) return null;
 
+            await NormalizeCourseDtoAsync(courseDto);
+
             course.Title = courseDto.Title;
             course.Description = courseDto.Description;
             course.AvatarUrl = courseDto.AvatarUrl;
+            course.Code = courseDto.Code;
+            course.IntroVideoUrl = courseDto.IntroVideoUrl;
             course.Category = courseDto.Category;
             course.Status = courseDto.Status;
+            course.Level = courseDto.Level;
+            course.Language = courseDto.Language;
             course.DurationMinutes = courseDto.DurationMinutes;
+            course.ExpectedStudentCount = courseDto.ExpectedStudentCount;
             course.StartDate = courseDto.StartDate;
             course.EndDate = courseDto.EndDate;
             course.LearningOutcomes = courseDto.LearningOutcomes;
@@ -352,7 +689,9 @@ namespace ElearningAPI.Services
                     Title = l.Title,
                     Description = l.Description,
                     VideoUrl = l.VideoUrl,
-                    PdfUrl = l.PdfUrl,
+                    PdfUrl = l.PdfFile != null && l.PdfFile.Length > 0 ? $"/api/public/lessons/{l.Id}/pdf" : l.PdfUrl,
+                    DocumentUrl = l.DocumentFile != null && l.DocumentFile.Length > 0 ? $"/api/public/lessons/{l.Id}/document" : l.DocumentUrl,
+                    DocumentName = l.DocumentFileName ?? l.DocumentName,
                     CreatedBy = l.CreatedBy,
                     CreatorName = l.Creator != null ? l.Creator.FullName : string.Empty,
                     CreatedAt = l.CreatedAt,
@@ -376,7 +715,9 @@ namespace ElearningAPI.Services
                 Title = lesson.Title,
                 Description = lesson.Description,
                 VideoUrl = lesson.VideoUrl,
-                PdfUrl = lesson.PdfUrl,
+                PdfUrl = ResolveLessonPdfUrl(lesson),
+                DocumentUrl = ResolveLessonDocumentUrl(lesson),
+                DocumentName = lesson.DocumentFileName ?? lesson.DocumentName,
                 CreatedBy = lesson.CreatedBy,
                 CreatorName = lesson.Creator != null ? lesson.Creator.FullName : string.Empty,
                 CreatedAt = lesson.CreatedAt,
@@ -396,11 +737,14 @@ namespace ElearningAPI.Services
                 Description = lessonDto.Description,
                 VideoUrl = lessonDto.VideoUrl,
                 PdfUrl = lessonDto.PdfUrl,
+                DocumentUrl = lessonDto.DocumentUrl,
+                DocumentName = lessonDto.DocumentName,
                 CreatedBy = adminId,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             };
 
+            await ApplyLessonFilesAsync(lesson, lessonDto);
             _context.Lessons.Add(lesson);
             await _context.SaveChangesAsync();
 
@@ -424,8 +768,11 @@ namespace ElearningAPI.Services
             lesson.Description = lessonDto.Description;
             lesson.VideoUrl = lessonDto.VideoUrl;
             lesson.PdfUrl = lessonDto.PdfUrl;
+            lesson.DocumentUrl = lessonDto.DocumentUrl;
+            lesson.DocumentName = lessonDto.DocumentName;
             lesson.UpdatedAt = DateTime.UtcNow;
 
+            await ApplyLessonFilesAsync(lesson, lessonDto);
             await _context.SaveChangesAsync();
             return await GetLessonByIdAsync(lesson.Id);
         }
@@ -436,6 +783,131 @@ namespace ElearningAPI.Services
             if (lesson == null) return false;
 
             _context.Lessons.Remove(lesson);
+            await _context.SaveChangesAsync();
+            return true;
+        }
+
+        public async Task<IEnumerable<CourseMaterialResponseDto>> GetCourseMaterialsAsync(int courseId)
+        {
+            var materials = await _context.CourseMaterials
+                .Where(m => m.CourseId == courseId)
+                .OrderByDescending(m => m.UpdatedAt)
+                .ToListAsync();
+
+            return materials.Select(ToCourseMaterialResponse);
+        }
+
+        public async Task<CourseMaterialResponseDto?> CreateCourseMaterialAsync(CourseMaterialDto dto)
+        {
+            var courseExists = await _context.Courses.AnyAsync(c => c.Id == dto.CourseId);
+            if (!courseExists) return null;
+
+            var material = new CourseMaterial
+            {
+                CourseId = dto.CourseId,
+                Title = dto.Title.Trim(),
+                FileUrl = dto.FileUrl.Trim(),
+                FileType = dto.FileType.Trim().ToLowerInvariant(),
+                MimeType = dto.MimeType?.Trim() ?? string.Empty,
+                Description = dto.Description?.Trim() ?? string.Empty,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            _context.CourseMaterials.Add(material);
+            await _context.SaveChangesAsync();
+
+            return ToCourseMaterialResponse(material);
+        }
+
+        public async Task<CourseMaterialResponseDto?> UpdateCourseMaterialAsync(int id, CourseMaterialDto dto)
+        {
+            var material = await _context.CourseMaterials.FindAsync(id);
+            if (material == null) return null;
+
+            var courseExists = await _context.Courses.AnyAsync(c => c.Id == dto.CourseId);
+            if (!courseExists) return null;
+
+            material.CourseId = dto.CourseId;
+            material.Title = dto.Title.Trim();
+            material.FileUrl = dto.FileUrl.Trim();
+            material.FileType = dto.FileType.Trim().ToLowerInvariant();
+            material.MimeType = dto.MimeType?.Trim() ?? string.Empty;
+            material.Description = dto.Description?.Trim() ?? string.Empty;
+            material.UpdatedAt = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+            return ToCourseMaterialResponse(material);
+        }
+
+        public async Task<bool> DeleteCourseMaterialAsync(int id)
+        {
+            var material = await _context.CourseMaterials.FindAsync(id);
+            if (material == null) return false;
+
+            _context.CourseMaterials.Remove(material);
+            await _context.SaveChangesAsync();
+            return true;
+        }
+
+        public async Task<IEnumerable<LearningItemResponseDto>> GetCourseLearningItemsAsync(int courseId)
+        {
+            var items = await _context.Tests
+                .Include(t => t.Lesson)
+                .Where(t => t.Lesson.CourseId == courseId)
+                .OrderByDescending(t => t.CreatedAt)
+                .ToListAsync();
+
+            return items.Select(item => ToLearningItemResponse(item, GetLearningItemType(item.Content)));
+        }
+
+        public async Task<LearningItemResponseDto?> CreateLearningItemAsync(LearningItemDto dto)
+        {
+            var lesson = await _context.Lessons.FirstOrDefaultAsync(l => l.Id == dto.LessonId && l.CourseId == dto.CourseId);
+            if (lesson == null) return null;
+
+            var type = NormalizeLearningItemType(dto.Type);
+            var item = new Test
+            {
+                LessonId = dto.LessonId,
+                Title = dto.Title.Trim(),
+                Content = NormalizeJsonContent(dto.Content, type),
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _context.Tests.Add(item);
+            await _context.SaveChangesAsync();
+            await _context.Entry(item).Reference(t => t.Lesson).LoadAsync();
+
+            return ToLearningItemResponse(item, type);
+        }
+
+        public async Task<LearningItemResponseDto?> UpdateLearningItemAsync(int id, LearningItemDto dto)
+        {
+            var item = await _context.Tests
+                .Include(t => t.Lesson)
+                .FirstOrDefaultAsync(t => t.Id == id);
+            if (item == null) return null;
+
+            var lesson = await _context.Lessons.FirstOrDefaultAsync(l => l.Id == dto.LessonId && l.CourseId == dto.CourseId);
+            if (lesson == null) return null;
+
+            var type = NormalizeLearningItemType(dto.Type);
+            item.LessonId = dto.LessonId;
+            item.Title = dto.Title.Trim();
+            item.Content = NormalizeJsonContent(dto.Content, type);
+            await _context.SaveChangesAsync();
+            await _context.Entry(item).Reference(t => t.Lesson).LoadAsync();
+
+            return ToLearningItemResponse(item, type);
+        }
+
+        public async Task<bool> DeleteLearningItemAsync(int id)
+        {
+            var item = await _context.Tests.FindAsync(id);
+            if (item == null) return false;
+
+            _context.Tests.Remove(item);
             await _context.SaveChangesAsync();
             return true;
         }
@@ -458,9 +930,9 @@ namespace ElearningAPI.Services
                     TotalTrend = 15,
                     Active = users.Count, // Mocking all active for now
                     ActiveTrend = 8,
-                    Teacher = users.Count(u => u.Role == Role.TEACHER),
+                    Teacher = users.Count(u => u.Role == UserRole.TEACHER),
                     TeacherTrend = 2,
-                    Student = users.Count(u => u.Role == Role.STUDENT),
+                    Student = users.Count(u => u.Role == UserRole.STUDENT),
                     StudentTrend = 12
                 },
                 CourseStats = new CourseManagementStatsDto

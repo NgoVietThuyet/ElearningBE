@@ -9,10 +9,69 @@ namespace ElearningAPI.Services
     public class TeacherService : ITeacherService
     {
         private readonly AppDbContext _context;
+        private static readonly HashSet<string> AllowedPdfTypes = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "application/pdf"
+        };
+        private static readonly HashSet<string> AllowedDocumentTypes = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "application/msword",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        };
 
         public TeacherService(AppDbContext context)
         {
             _context = context;
+        }
+
+        private static async Task<byte[]> ReadFormFileAsync(Microsoft.AspNetCore.Http.IFormFile file)
+        {
+            await using var stream = file.OpenReadStream();
+            using var memory = new MemoryStream();
+            await stream.CopyToAsync(memory);
+            return memory.ToArray();
+        }
+
+        private static async Task ApplyLessonFilesAsync(Lesson lesson, LessonDto dto)
+        {
+            if (dto.PdfFile is { Length: > 0 })
+            {
+                if (!AllowedPdfTypes.Contains(dto.PdfFile.ContentType))
+                    throw new InvalidOperationException("Tệp PDF không hợp lệ.");
+
+                lesson.PdfFile = await ReadFormFileAsync(dto.PdfFile);
+                lesson.PdfContentType = dto.PdfFile.ContentType;
+                lesson.PdfFileName = Path.GetFileName(dto.PdfFile.FileName);
+                lesson.PdfUrl = string.Empty;
+            }
+
+            if (dto.DocumentFile is { Length: > 0 })
+            {
+                if (!AllowedDocumentTypes.Contains(dto.DocumentFile.ContentType))
+                    throw new InvalidOperationException("Tệp Word không hợp lệ. Chỉ hỗ trợ DOC hoặc DOCX.");
+
+                lesson.DocumentFile = await ReadFormFileAsync(dto.DocumentFile);
+                lesson.DocumentContentType = dto.DocumentFile.ContentType;
+                lesson.DocumentFileName = Path.GetFileName(dto.DocumentFile.FileName);
+                lesson.DocumentName = lesson.DocumentFileName;
+                lesson.DocumentUrl = null;
+            }
+        }
+
+        private static string ResolveLessonPdfUrl(Lesson lesson)
+        {
+            if (lesson.PdfFile != null && lesson.PdfFile.Length > 0)
+                return $"/api/public/lessons/{lesson.Id}/pdf";
+
+            return lesson.PdfUrl;
+        }
+
+        private static string? ResolveLessonDocumentUrl(Lesson lesson)
+        {
+            if (lesson.DocumentFile != null && lesson.DocumentFile.Length > 0)
+                return $"/api/public/lessons/{lesson.Id}/document";
+
+            return lesson.DocumentUrl;
         }
 
         public async Task<object> GetOverviewStats(int teacherId)
@@ -150,7 +209,9 @@ namespace ElearningAPI.Services
                     l.Title,
                     l.Description,
                     l.VideoUrl,
-                    l.PdfUrl,
+                    PdfUrl = l.PdfFile != null && l.PdfFile.Length > 0 ? $"/api/public/lessons/{l.Id}/pdf" : l.PdfUrl,
+                    DocumentUrl = l.DocumentFile != null && l.DocumentFile.Length > 0 ? $"/api/public/lessons/{l.Id}/document" : l.DocumentUrl,
+                    DocumentName = l.DocumentFileName ?? l.DocumentName,
                     StudentCount = _context.Enrollments.Count(e => e.CourseId == l.CourseId),
                     Progress = Math.Round(_context.Enrollments
                         .Where(e => e.CourseId == l.CourseId)
@@ -236,11 +297,14 @@ namespace ElearningAPI.Services
                 Description = dto.Description,
                 VideoUrl = dto.VideoUrl,
                 PdfUrl = dto.PdfUrl,
+                DocumentUrl = dto.DocumentUrl,
+                DocumentName = dto.DocumentName,
                 CreatedBy = teacherId,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             };
 
+            await ApplyLessonFilesAsync(lesson, dto);
             _context.Lessons.Add(lesson);
             await _context.SaveChangesAsync();
             return await GetLessonProjection(teacherId, lesson.Id);
@@ -260,8 +324,11 @@ namespace ElearningAPI.Services
             lesson.Description = dto.Description;
             lesson.VideoUrl = dto.VideoUrl;
             lesson.PdfUrl = dto.PdfUrl;
+            lesson.DocumentUrl = dto.DocumentUrl;
+            lesson.DocumentName = dto.DocumentName;
             lesson.UpdatedAt = DateTime.UtcNow;
 
+            await ApplyLessonFilesAsync(lesson, dto);
             await _context.SaveChangesAsync();
             return await GetLessonProjection(teacherId, lesson.Id);
         }
@@ -517,7 +584,9 @@ namespace ElearningAPI.Services
                     l.Title,
                     l.Description,
                     l.VideoUrl,
-                    l.PdfUrl,
+                    PdfUrl = l.PdfFile != null && l.PdfFile.Length > 0 ? $"/api/public/lessons/{l.Id}/pdf" : l.PdfUrl,
+                    DocumentUrl = l.DocumentFile != null && l.DocumentFile.Length > 0 ? $"/api/public/lessons/{l.Id}/document" : l.DocumentUrl,
+                    DocumentName = l.DocumentFileName ?? l.DocumentName,
                     StudentCount = _context.Enrollments.Count(e => e.CourseId == l.CourseId),
                     Progress = Math.Round(_context.Enrollments
                         .Where(e => e.CourseId == l.CourseId)

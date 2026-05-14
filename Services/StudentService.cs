@@ -120,7 +120,9 @@ namespace ElearningAPI.Services
                 lesson.Title,
                 lesson.Description,
                 lesson.VideoUrl,
-                lesson.PdfUrl,
+                PdfUrl = lesson.PdfFile != null && lesson.PdfFile.Length > 0 ? $"/api/public/lessons/{lesson.Id}/pdf" : lesson.PdfUrl,
+                DocumentUrl = lesson.DocumentFile != null && lesson.DocumentFile.Length > 0 ? $"/api/public/lessons/{lesson.Id}/document" : lesson.DocumentUrl,
+                DocumentName = lesson.DocumentFileName ?? lesson.DocumentName,
                 Flashcards = lesson.Tests
                     .Where(t => IsContentType(t.Content, "flashcard"))
                     .Select(t => new { t.Id, t.Title, Cards = ReadJsonProperty(t.Content, "cards") }),

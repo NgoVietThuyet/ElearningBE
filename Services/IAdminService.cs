@@ -31,6 +31,16 @@ namespace ElearningAPI.Services
         Task<LessonResponseDto?> UpdateLessonAsync(int id, LessonDto lessonDto);
         Task<bool> DeleteLessonAsync(int id);
 
+        Task<IEnumerable<CourseMaterialResponseDto>> GetCourseMaterialsAsync(int courseId);
+        Task<CourseMaterialResponseDto?> CreateCourseMaterialAsync(CourseMaterialDto dto);
+        Task<CourseMaterialResponseDto?> UpdateCourseMaterialAsync(int id, CourseMaterialDto dto);
+        Task<bool> DeleteCourseMaterialAsync(int id);
+
+        Task<IEnumerable<LearningItemResponseDto>> GetCourseLearningItemsAsync(int courseId);
+        Task<LearningItemResponseDto?> CreateLearningItemAsync(LearningItemDto dto);
+        Task<LearningItemResponseDto?> UpdateLearningItemAsync(int id, LearningItemDto dto);
+        Task<bool> DeleteLearningItemAsync(int id);
+
         // Stats
         Task<OverviewStatsDto> GetOverviewStatsAsync();
         Task<IEnumerable<GpaDistributionDto>> GetGpaDistributionAsync();
