@@ -3,7 +3,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
-using Microsoft.EntityFrameworkCore;
 using ElearningAPI.Models;
 using ElearningAPI.Services;
 using Microsoft.OpenApi.Models;
@@ -71,7 +70,15 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowReactApp",
         policy =>
         {
-            policy.SetIsOriginAllowed(origin => new Uri(origin).Host == "localhost")
+            policy.SetIsOriginAllowed(origin =>
+                  {
+                      if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri)) return false;
+
+                      return uri.Host == "localhost"
+                          || uri.Host == "127.0.0.1"
+                          || uri.Host == "elearning-fe-jcuz.vercel.app"
+                          || uri.Host.EndsWith(".vercel.app", StringComparison.OrdinalIgnoreCase);
+                  })
                   .AllowAnyHeader()
                   .AllowAnyMethod()
                   .AllowCredentials();
