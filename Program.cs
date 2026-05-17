@@ -64,17 +64,23 @@ builder.Services.AddScoped<IAdminService, AdminService>();
 builder.Services.AddScoped<ITeacherService, TeacherService>();
 builder.Services.AddScoped<IStudentService, StudentService>();
 
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("AllowReactApp", policy =>
-    {
-        policy.AllowAnyOrigin()
-              .AllowAnyHeader()
-              .AllowAnyMethod();
-    });
-});
-
 var app = builder.Build();
+
+app.Use((context, next) =>
+{
+    var origin = context.Request.Headers.Origin.FirstOrDefault() ?? "*";
+    context.Response.Headers["Access-Control-Allow-Origin"] = origin;
+    context.Response.Headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, PATCH, OPTIONS";
+    context.Response.Headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With";
+
+    if (HttpMethods.IsOptions(context.Request.Method))
+    {
+        context.Response.StatusCode = StatusCodes.Status200OK;
+        return Task.CompletedTask;
+    }
+
+    return next();
+});
 
 // Tự động chạy migration khi khởi động (bao gồm reset passwords và xóa base64 avatar)
 using (var scope = app.Services.CreateScope())
@@ -162,7 +168,6 @@ using (var scope = app.Services.CreateScope())
 
 // Configure the HTTP request pipeline.
 app.UseStaticFiles(); // Cho phép truy cập file tĩnh trong wwwroot
-app.UseCors("AllowReactApp");
 
 app.UseSwagger();
 app.UseSwaggerUI();
