@@ -67,22 +67,18 @@ builder.Services.AddScoped<IStudentService, StudentService>();
 // 1. Định nghĩa chính sách CORS
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowReactApp",
-        policy =>
-        {
-            policy.SetIsOriginAllowed(origin =>
-                  {
-                      if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri)) return false;
-
-                      return uri.Host == "localhost"
-                          || uri.Host == "127.0.0.1"
-                          || uri.Host == "elearning-fe-jcuz.vercel.app"
-                          || uri.Host.EndsWith(".vercel.app", StringComparison.OrdinalIgnoreCase);
-                  })
-                  .AllowAnyHeader()
-                  .AllowAnyMethod()
-                  .AllowCredentials();
-        });
+    options.AddPolicy("AllowReactApp", policy =>
+    {
+        policy
+            .WithOrigins(
+                "http://localhost:3000",
+                "http://localhost:5173",
+                "https://elearning-fe-jcuz.vercel.app"
+            )
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials();
+    });
 });
 
 var app = builder.Build();
