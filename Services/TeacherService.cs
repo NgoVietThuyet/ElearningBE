@@ -16,7 +16,12 @@ namespace ElearningAPI.Services
         private static readonly HashSet<string> AllowedDocumentTypes = new(StringComparer.OrdinalIgnoreCase)
         {
             "application/msword",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/vnd.ms-powerpoint",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            "application/zip",
+            "application/x-zip-compressed",
+            "application/octet-stream"
         };
 
         public TeacherService(AppDbContext context)
@@ -47,7 +52,7 @@ namespace ElearningAPI.Services
 
             if (dto.DocumentFile is { Length: > 0 })
             {
-                if (!AllowedDocumentTypes.Contains(dto.DocumentFile.ContentType))
+                if (!AllowedDocumentTypes.Contains(dto.DocumentFile.ContentType) && !AllowedPdfTypes.Contains(dto.DocumentFile.ContentType))
                     throw new InvalidOperationException("Tệp Word không hợp lệ. Chỉ hỗ trợ DOC hoặc DOCX.");
 
                 lesson.DocumentFile = await ReadFormFileAsync(dto.DocumentFile);
@@ -56,6 +61,27 @@ namespace ElearningAPI.Services
                 lesson.DocumentName = lesson.DocumentFileName;
                 lesson.DocumentUrl = null;
             }
+
+            if (dto.LessonPlanFile is { Length: > 0 })
+            {
+                if (!AllowedDocumentTypes.Contains(dto.LessonPlanFile.ContentType) && !AllowedPdfTypes.Contains(dto.LessonPlanFile.ContentType))
+                    throw new InvalidOperationException("Tep giao an khong hop le.");
+
+                lesson.LessonPlanFile = await ReadFormFileAsync(dto.LessonPlanFile);
+                lesson.LessonPlanContentType = dto.LessonPlanFile.ContentType;
+                lesson.LessonPlanFileName = Path.GetFileName(dto.LessonPlanFile.FileName);
+            }
+
+            if (dto.SlideFile is { Length: > 0 })
+            {
+                if (!AllowedDocumentTypes.Contains(dto.SlideFile.ContentType) && !AllowedPdfTypes.Contains(dto.SlideFile.ContentType))
+                    throw new InvalidOperationException("Tep slide khong hop le.");
+
+                lesson.SlideFile = await ReadFormFileAsync(dto.SlideFile);
+                lesson.SlideContentType = dto.SlideFile.ContentType;
+                lesson.SlideFileName = Path.GetFileName(dto.SlideFile.FileName);
+            }
+
         }
 
         private static string ResolveLessonPdfUrl(Lesson lesson)
@@ -63,7 +89,7 @@ namespace ElearningAPI.Services
             if (lesson.PdfFile != null && lesson.PdfFile.Length > 0)
                 return $"/api/public/lessons/{lesson.Id}/pdf";
 
-            return lesson.PdfUrl;
+            return lesson.PdfUrl ?? string.Empty;
         }
 
         private static string? ResolveLessonDocumentUrl(Lesson lesson)
@@ -82,6 +108,7 @@ namespace ElearningAPI.Services
             var studentCount = await studentIds.CountAsync();
             var courseCount = await courseIds.CountAsync();
             var lessonCount = await _context.Lessons.CountAsync(l => l.CreatedBy == teacherId);
+            var assessmentCount = await _context.Tests.CountAsync(t => t.Lesson.CreatedBy == teacherId || courseIds.Contains(t.Lesson.CourseId));
             var avgProgress = await _context.Enrollments
                 .Where(e => studentIds.Contains(e.StudentId) && courseIds.Contains(e.CourseId))
                 .AverageAsync(e => (double?)e.ProgressPercentage) ?? 0;
@@ -93,6 +120,7 @@ namespace ElearningAPI.Services
                 StudentCount = studentCount,
                 CourseCount = courseCount,
                 LessonCount = lessonCount,
+                AssessmentCount = assessmentCount,
                 CompletionRate = $"{Math.Round(avgProgress, 1)}%",
                 AvgScore = Math.Round(avgScore, 1).ToString("F1")
             };
@@ -108,6 +136,10 @@ namespace ElearningAPI.Services
                     c.Id,
                     c.Title,
                     c.Description,
+                    c.AvatarUrl,
+                    c.Category,
+                    c.Level,
+                    c.DurationMinutes,
                     c.CreatedAt,
                     LessonCount = c.Lessons.Count,
                     StudentCount = c.Enrollments.Count,
@@ -212,6 +244,12 @@ namespace ElearningAPI.Services
                     PdfUrl = l.PdfFile != null && l.PdfFile.Length > 0 ? $"/api/public/lessons/{l.Id}/pdf" : l.PdfUrl,
                     DocumentUrl = l.DocumentFile != null && l.DocumentFile.Length > 0 ? $"/api/public/lessons/{l.Id}/document" : l.DocumentUrl,
                     DocumentName = l.DocumentFileName ?? l.DocumentName,
+                    LessonPlanUrl = l.LessonPlanFile != null && l.LessonPlanFile.Length > 0 ? $"/api/public/lessons/{l.Id}/lesson-plan" : null,
+                    l.LessonPlanFileName,
+                    SlideUrl = l.SlideFile != null && l.SlideFile.Length > 0 ? $"/api/public/lessons/{l.Id}/slide" : null,
+                    l.SlideFileName,
+                    l.ArVrUrl,
+                    QuizCount = l.Tests.Count,
                     StudentCount = _context.Enrollments.Count(e => e.CourseId == l.CourseId),
                     Progress = Math.Round(_context.Enrollments
                         .Where(e => e.CourseId == l.CourseId)
@@ -295,10 +333,11 @@ namespace ElearningAPI.Services
                 CourseId = dto.CourseId,
                 Title = dto.Title,
                 Description = dto.Description,
-                VideoUrl = dto.VideoUrl,
-                PdfUrl = dto.PdfUrl,
+                VideoUrl = dto.VideoUrl ?? string.Empty,
+                PdfUrl = dto.PdfUrl ?? string.Empty,
                 DocumentUrl = dto.DocumentUrl,
                 DocumentName = dto.DocumentName,
+                ArVrUrl = dto.ArVrUrl,
                 CreatedBy = teacherId,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
@@ -322,10 +361,11 @@ namespace ElearningAPI.Services
             lesson.CourseId = dto.CourseId;
             lesson.Title = dto.Title;
             lesson.Description = dto.Description;
-            lesson.VideoUrl = dto.VideoUrl;
-            lesson.PdfUrl = dto.PdfUrl;
+            lesson.VideoUrl = dto.VideoUrl ?? string.Empty;
+            lesson.PdfUrl = dto.PdfUrl ?? string.Empty;
             lesson.DocumentUrl = dto.DocumentUrl;
             lesson.DocumentName = dto.DocumentName;
+            lesson.ArVrUrl = dto.ArVrUrl;
             lesson.UpdatedAt = DateTime.UtcNow;
 
             await ApplyLessonFilesAsync(lesson, dto);
@@ -587,6 +627,12 @@ namespace ElearningAPI.Services
                     PdfUrl = l.PdfFile != null && l.PdfFile.Length > 0 ? $"/api/public/lessons/{l.Id}/pdf" : l.PdfUrl,
                     DocumentUrl = l.DocumentFile != null && l.DocumentFile.Length > 0 ? $"/api/public/lessons/{l.Id}/document" : l.DocumentUrl,
                     DocumentName = l.DocumentFileName ?? l.DocumentName,
+                    LessonPlanUrl = l.LessonPlanFile != null && l.LessonPlanFile.Length > 0 ? $"/api/public/lessons/{l.Id}/lesson-plan" : null,
+                    l.LessonPlanFileName,
+                    SlideUrl = l.SlideFile != null && l.SlideFile.Length > 0 ? $"/api/public/lessons/{l.Id}/slide" : null,
+                    l.SlideFileName,
+                    l.ArVrUrl,
+                    QuizCount = l.Tests.Count,
                     StudentCount = _context.Enrollments.Count(e => e.CourseId == l.CourseId),
                     Progress = Math.Round(_context.Enrollments
                         .Where(e => e.CourseId == l.CourseId)

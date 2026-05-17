@@ -1,23 +1,20 @@
-using BCrypt.Net;
 using ElearningAPI.Data;
-using ElearningAPI.Models;
 using ElearningAPI.Dtos;
+using ElearningAPI.Models;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
-using Microsoft.EntityFrameworkCore;
 
 namespace ElearningAPI.Services
 {
-    // Interface định nghĩa các hành động
     public interface IAuthService
     {
         Task<string> RegisterAsync(RegisterDto dto);
         Task<string?> LoginAsync(LoginDto dto);
     }
 
-    // Service triển khai logic thực tế
     public class AuthService : IAuthService
     {
         private readonly AppDbContext _context;
@@ -40,13 +37,12 @@ namespace ElearningAPI.Services
             if (await _context.Users.AsNoTracking().AnyAsync(u => u.Email == dto.Email))
                 return "Email đã tồn tại trong hệ thống.";
 
-            // Lưu mật khẩu dạng plain text (dự án học tập)
             var user = new User
             {
                 FullName = dto.FullName ?? string.Empty,
                 Email = dto.Email,
                 PasswordHash = dto.Password,
-                Role = UserRole.STUDENT // Mặc định là Student
+                Role = UserRole.STUDENT,
             };
 
             try
@@ -63,21 +59,17 @@ namespace ElearningAPI.Services
 
         public async Task<string?> LoginAsync(LoginDto dto)
         {
-            // Tìm người dùng theo Email
             var user = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Email == dto.Email);
 
             if (user == null) return null;
 
-            // Hỗ trợ cả mật khẩu cũ (BCrypt hash bắt đầu bằng "$2") và mới (plain text)
             bool isValid;
             if (user.PasswordHash.StartsWith("$2"))
             {
-                // Tài khoản cũ có mật khẩu BCrypt
                 isValid = BCrypt.Net.BCrypt.Verify(dto.Password, user.PasswordHash);
             }
             else
             {
-                // Tài khoản mới lưu plain text
                 isValid = user.PasswordHash == dto.Password;
             }
 
@@ -94,10 +86,9 @@ namespace ElearningAPI.Services
                 new Claim(ClaimTypes.Name, user.FullName),
                 new Claim(ClaimTypes.Email, user.Email),
                 new Claim(ClaimTypes.Role, user.Role.ToString()),
-                // Chỉ nhúng avatarUrl nếu là URL thực (http/https), KHÔNG nhúng base64
                 new Claim("AvatarUrl", (user.AvatarUrl != null && (user.AvatarUrl.StartsWith("http://") || user.AvatarUrl.StartsWith("https://")))
                     ? user.AvatarUrl
-                    : "")
+                    : ""),
             };
 
             var jwtKey = _config["Jwt:Key"];

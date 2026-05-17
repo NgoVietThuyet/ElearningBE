@@ -20,10 +20,10 @@ namespace ElearningAPI.Models
         public string Description { get; set; }
         
         [MaxLength(255)]
-        public string VideoUrl { get; set; }
+        public string? VideoUrl { get; set; }
         
         [MaxLength(255)]
-        public string PdfUrl { get; set; }
+        public string? PdfUrl { get; set; }
 
         [MaxLength(500)]
         public string? DocumentUrl { get; set; }
@@ -46,6 +46,25 @@ namespace ElearningAPI.Models
 
         [MaxLength(255)]
         public string? DocumentFileName { get; set; }
+
+        public byte[]? LessonPlanFile { get; set; }
+
+        [MaxLength(120)]
+        public string? LessonPlanContentType { get; set; }
+
+        [MaxLength(255)]
+        public string? LessonPlanFileName { get; set; }
+
+        public byte[]? SlideFile { get; set; }
+
+        [MaxLength(120)]
+        public string? SlideContentType { get; set; }
+
+        [MaxLength(255)]
+        public string? SlideFileName { get; set; }
+
+        [MaxLength(500)]
+        public string? ArVrUrl { get; set; }
         
         public int CreatedBy { get; set; }
         [ForeignKey("CreatedBy")]

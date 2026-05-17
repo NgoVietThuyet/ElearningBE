@@ -99,9 +99,16 @@ namespace ElearningAPI.Controllers
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
 
-            var result = await _teacherService.CreateLessonAsync(GetUserId(), dto);
-            if (result == null) return BadRequest(new { Message = "Khoa hoc khong ton tai hoac khong thuoc quyen quan ly." });
-            return Ok(result);
+            try
+            {
+                var result = await _teacherService.CreateLessonAsync(GetUserId(), dto);
+                if (result == null) return BadRequest(new { Message = "Khoa hoc khong ton tai hoac khong thuoc quyen quan ly." });
+                return Ok(result);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { Message = ex.Message });
+            }
         }
 
         [HttpPut("lessons/{lessonId}")]
@@ -109,9 +116,16 @@ namespace ElearningAPI.Controllers
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
 
-            var result = await _teacherService.UpdateLessonAsync(GetUserId(), lessonId, dto);
-            if (result == null) return NotFound(new { Message = "Khong tim thay bai giang hoac khoa hoc khong hop le." });
-            return Ok(result);
+            try
+            {
+                var result = await _teacherService.UpdateLessonAsync(GetUserId(), lessonId, dto);
+                if (result == null) return NotFound(new { Message = "Khong tim thay bai giang hoac khoa hoc khong hop le." });
+                return Ok(result);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { Message = ex.Message });
+            }
         }
 
         [HttpDelete("lessons/{lessonId}")]

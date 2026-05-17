@@ -14,10 +14,10 @@ namespace ElearningAPI.Dtos
         public string Description { get; set; } = string.Empty;
         
         [MaxLength(255)]
-        public string VideoUrl { get; set; } = string.Empty;
+        public string? VideoUrl { get; set; }
         
         [MaxLength(255)]
-        public string PdfUrl { get; set; } = string.Empty;
+        public string? PdfUrl { get; set; }
 
         [MaxLength(500)]
         public string? DocumentUrl { get; set; }
@@ -28,6 +28,13 @@ namespace ElearningAPI.Dtos
         public IFormFile? PdfFile { get; set; }
 
         public IFormFile? DocumentFile { get; set; }
+
+        public IFormFile? LessonPlanFile { get; set; }
+
+        public IFormFile? SlideFile { get; set; }
+
+        [MaxLength(500)]
+        public string? ArVrUrl { get; set; }
     }
 
     public class LessonResponseDto : LessonDto

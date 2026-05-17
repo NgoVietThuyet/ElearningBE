@@ -178,6 +178,30 @@ namespace ElearningAPI.Controllers
             return NotFound();
         }
 
+        [HttpGet("lessons/{lessonId}/lesson-plan")]
+        public async Task<IActionResult> GetLessonPlan(int lessonId)
+        {
+            var lesson = await _context.Lessons.FirstOrDefaultAsync(l => l.Id == lessonId);
+            if (lesson?.LessonPlanFile == null || lesson.LessonPlanFile.Length == 0) return NotFound();
+
+            return File(
+                lesson.LessonPlanFile,
+                lesson.LessonPlanContentType ?? "application/octet-stream",
+                lesson.LessonPlanFileName ?? $"lesson-plan-{lessonId}");
+        }
+
+        [HttpGet("lessons/{lessonId}/slide")]
+        public async Task<IActionResult> GetLessonSlide(int lessonId)
+        {
+            var lesson = await _context.Lessons.FirstOrDefaultAsync(l => l.Id == lessonId);
+            if (lesson?.SlideFile == null || lesson.SlideFile.Length == 0) return NotFound();
+
+            return File(
+                lesson.SlideFile,
+                lesson.SlideContentType ?? "application/octet-stream",
+                lesson.SlideFileName ?? $"slide-{lessonId}");
+        }
+
         /// <summary>GET /api/public/news/{id} — Lấy chi tiết tin tức</summary>
         [HttpGet("news/{id}")]
         public async Task<IActionResult> GetNewsById(int id)

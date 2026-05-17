@@ -244,7 +244,7 @@ namespace ElearningAPI.Services
             if (lesson.PdfFile != null && lesson.PdfFile.Length > 0)
                 return $"/api/public/lessons/{lesson.Id}/pdf";
 
-            return lesson.PdfUrl;
+            return lesson.PdfUrl ?? string.Empty;
         }
 
         private static string? ResolveLessonDocumentUrl(Lesson lesson)
@@ -688,7 +688,7 @@ namespace ElearningAPI.Services
                     CourseId = l.CourseId,
                     Title = l.Title,
                     Description = l.Description,
-                    VideoUrl = l.VideoUrl,
+                    VideoUrl = l.VideoUrl ?? string.Empty,
                     PdfUrl = l.PdfFile != null && l.PdfFile.Length > 0 ? $"/api/public/lessons/{l.Id}/pdf" : l.PdfUrl,
                     DocumentUrl = l.DocumentFile != null && l.DocumentFile.Length > 0 ? $"/api/public/lessons/{l.Id}/document" : l.DocumentUrl,
                     DocumentName = l.DocumentFileName ?? l.DocumentName,
@@ -714,7 +714,7 @@ namespace ElearningAPI.Services
                 CourseId = lesson.CourseId,
                 Title = lesson.Title,
                 Description = lesson.Description,
-                VideoUrl = lesson.VideoUrl,
+                VideoUrl = lesson.VideoUrl ?? string.Empty,
                 PdfUrl = ResolveLessonPdfUrl(lesson),
                 DocumentUrl = ResolveLessonDocumentUrl(lesson),
                 DocumentName = lesson.DocumentFileName ?? lesson.DocumentName,
@@ -735,8 +735,8 @@ namespace ElearningAPI.Services
                 CourseId = lessonDto.CourseId,
                 Title = lessonDto.Title,
                 Description = lessonDto.Description,
-                VideoUrl = lessonDto.VideoUrl,
-                PdfUrl = lessonDto.PdfUrl,
+                VideoUrl = lessonDto.VideoUrl ?? string.Empty,
+                PdfUrl = lessonDto.PdfUrl ?? string.Empty,
                 DocumentUrl = lessonDto.DocumentUrl,
                 DocumentName = lessonDto.DocumentName,
                 CreatedBy = adminId,
@@ -766,8 +766,8 @@ namespace ElearningAPI.Services
             lesson.CourseId = lessonDto.CourseId;
             lesson.Title = lessonDto.Title;
             lesson.Description = lessonDto.Description;
-            lesson.VideoUrl = lessonDto.VideoUrl;
-            lesson.PdfUrl = lessonDto.PdfUrl;
+            lesson.VideoUrl = lessonDto.VideoUrl ?? string.Empty;
+            lesson.PdfUrl = lessonDto.PdfUrl ?? string.Empty;
             lesson.DocumentUrl = lessonDto.DocumentUrl;
             lesson.DocumentName = lessonDto.DocumentName;
             lesson.UpdatedAt = DateTime.UtcNow;
