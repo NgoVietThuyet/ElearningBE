@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace ElearningAPI.Controllers
 {
-    [Authorize(Roles = "STUDENT,ADMIN")]
+    [Authorize(Roles = "STUDENT,ADMIN,TEACHER")]
     [Route("api/[controller]")]
     [ApiController]
     public class StudentController : ControllerBase
@@ -53,7 +53,8 @@ namespace ElearningAPI.Controllers
         [HttpGet("lessons/{lessonId}")]
         public async Task<IActionResult> GetLessonDetail(int lessonId)
         {
-            var result = await _studentService.GetLessonDetail(GetUserId(), lessonId);
+            var skipEnrollment = User.IsInRole("ADMIN") || User.IsInRole("TEACHER");
+            var result = await _studentService.GetLessonDetail(GetUserId(), lessonId, skipEnrollment);
             if (result == null) return NotFound(new { Message = "Lesson not found or student is not enrolled." });
             return Ok(result);
         }

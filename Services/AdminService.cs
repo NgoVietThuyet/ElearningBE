@@ -455,7 +455,7 @@ namespace ElearningAPI.Services
                     Title = n.Title,
                     Content = n.Content,
                     AuthorId = n.AuthorId,
-                    AuthorName = n.Author.FullName,
+                    AuthorName = !string.IsNullOrWhiteSpace(n.AuthorName) ? n.AuthorName : n.Author.FullName,
                     AvatarUrl = n.AvatarUrl,
                     CreatedAt = n.CreatedAt,
                     UpdatedAt = n.UpdatedAt
@@ -477,7 +477,7 @@ namespace ElearningAPI.Services
                 Title = news.Title,
                 Content = news.Content,
                 AuthorId = news.AuthorId,
-                AuthorName = news.Author.FullName,
+                AuthorName = !string.IsNullOrWhiteSpace(news.AuthorName) ? news.AuthorName : news.Author.FullName,
                 AvatarUrl = news.AvatarUrl,
                 CreatedAt = news.CreatedAt,
                 UpdatedAt = news.UpdatedAt
@@ -486,12 +486,17 @@ namespace ElearningAPI.Services
 
         public async Task<NewsResponseDto> CreateNewsAsync(NewsDto newsDto, int authorId)
         {
+            var resolvedAuthorId = newsDto.AuthorId.HasValue && await _context.Users.AnyAsync(u => u.Id == newsDto.AuthorId.Value)
+                ? newsDto.AuthorId.Value
+                : authorId;
+
             var news = new News
             {
                 Title = newsDto.Title,
                 Content = newsDto.Content,
                 AvatarUrl = newsDto.AvatarUrl,
-                AuthorId = authorId,
+                AuthorName = string.IsNullOrWhiteSpace(newsDto.AuthorName) ? null : newsDto.AuthorName.Trim(),
+                AuthorId = resolvedAuthorId,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             };
@@ -510,6 +515,11 @@ namespace ElearningAPI.Services
             news.Title = newsDto.Title;
             news.Content = newsDto.Content;
             news.AvatarUrl = newsDto.AvatarUrl;
+            news.AuthorName = string.IsNullOrWhiteSpace(newsDto.AuthorName) ? null : newsDto.AuthorName.Trim();
+            if (newsDto.AuthorId.HasValue && await _context.Users.AnyAsync(u => u.Id == newsDto.AuthorId.Value))
+            {
+                news.AuthorId = newsDto.AuthorId.Value;
+            }
             news.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
@@ -692,6 +702,8 @@ namespace ElearningAPI.Services
                     PdfUrl = l.PdfFile != null && l.PdfFile.Length > 0 ? $"/api/public/lessons/{l.Id}/pdf" : l.PdfUrl,
                     DocumentUrl = l.DocumentFile != null && l.DocumentFile.Length > 0 ? $"/api/public/lessons/{l.Id}/document" : l.DocumentUrl,
                     DocumentName = l.DocumentFileName ?? l.DocumentName,
+                    ArVrUrl = l.ArVrUrl,
+                    QuizUrl = l.QuizUrl,
                     CreatedBy = l.CreatedBy,
                     CreatorName = l.Creator != null ? l.Creator.FullName : string.Empty,
                     CreatedAt = l.CreatedAt,
@@ -718,6 +730,8 @@ namespace ElearningAPI.Services
                 PdfUrl = ResolveLessonPdfUrl(lesson),
                 DocumentUrl = ResolveLessonDocumentUrl(lesson),
                 DocumentName = lesson.DocumentFileName ?? lesson.DocumentName,
+                ArVrUrl = lesson.ArVrUrl,
+                QuizUrl = lesson.QuizUrl,
                 CreatedBy = lesson.CreatedBy,
                 CreatorName = lesson.Creator != null ? lesson.Creator.FullName : string.Empty,
                 CreatedAt = lesson.CreatedAt,
@@ -739,6 +753,7 @@ namespace ElearningAPI.Services
                 PdfUrl = lessonDto.PdfUrl ?? string.Empty,
                 DocumentUrl = lessonDto.DocumentUrl,
                 DocumentName = lessonDto.DocumentName,
+                QuizUrl = lessonDto.QuizUrl,
                 CreatedBy = adminId,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
@@ -770,6 +785,7 @@ namespace ElearningAPI.Services
             lesson.PdfUrl = lessonDto.PdfUrl ?? string.Empty;
             lesson.DocumentUrl = lessonDto.DocumentUrl;
             lesson.DocumentName = lessonDto.DocumentName;
+            lesson.QuizUrl = lessonDto.QuizUrl;
             lesson.UpdatedAt = DateTime.UtcNow;
 
             await ApplyLessonFilesAsync(lesson, lessonDto);

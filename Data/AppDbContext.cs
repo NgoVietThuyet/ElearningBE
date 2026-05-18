@@ -83,6 +83,18 @@ namespace ElearningAPI.Data
         .WithMany()
         .HasForeignKey(f => f.StudentId)
         .OnDelete(DeleteBehavior.SetNull);
+
+    modelBuilder.Entity<Feedback>()
+        .HasOne(f => f.Author)
+        .WithMany()
+        .HasForeignKey(f => f.AuthorId)
+        .OnDelete(DeleteBehavior.SetNull);
+
+    modelBuilder.Entity<Feedback>()
+        .HasOne(f => f.ParentFeedback)
+        .WithMany(f => f.Replies)
+        .HasForeignKey(f => f.ParentFeedbackId)
+        .OnDelete(DeleteBehavior.Cascade);
 }
     }
 }

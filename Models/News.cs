@@ -16,6 +16,9 @@ namespace ElearningAPI.Models
         public string Content { get; set; }
 
         public string? AvatarUrl { get; set; }
+
+        [MaxLength(255)]
+        public string? AuthorName { get; set; }
         
         public int AuthorId { get; set; }
         [ForeignKey("AuthorId")]

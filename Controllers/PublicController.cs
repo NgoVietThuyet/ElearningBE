@@ -1,5 +1,6 @@
 using ElearningAPI.Data;
 using ElearningAPI.Models;
+using ElearningAPI.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,10 +12,12 @@ namespace ElearningAPI.Controllers
     public class PublicController : ControllerBase
     {
         private readonly AppDbContext _context;
+        private readonly DocumentConversionService _conversionService;
 
-        public PublicController(AppDbContext context)
+        public PublicController(AppDbContext context, DocumentConversionService conversionService)
         {
             _context = context;
+            _conversionService = conversionService;
         }
 
         /// <summary>GET /api/public/courses — Lấy danh sách khóa học (public)</summary>
@@ -70,7 +73,7 @@ namespace ElearningAPI.Controllers
                     n.Title,
                     n.Content,
                     n.AvatarUrl,
-                    AuthorName = n.Author != null ? n.Author.FullName : "Admin",
+                    AuthorName = !string.IsNullOrWhiteSpace(n.AuthorName) ? n.AuthorName : n.Author != null ? n.Author.FullName : "Admin",
                     n.CreatedAt
                 })
                 .ToListAsync();
@@ -123,6 +126,7 @@ namespace ElearningAPI.Controllers
                     l.Title,
                     l.Description,
                     l.VideoUrl,
+                    l.QuizUrl,
                     PdfUrl = l.PdfFile != null && l.PdfFile.Length > 0 ? $"/api/public/lessons/{l.Id}/pdf" : l.PdfUrl,
                     DocumentUrl = l.DocumentFile != null && l.DocumentFile.Length > 0 ? $"/api/public/lessons/{l.Id}/document" : l.DocumentUrl,
                     DocumentName = l.DocumentFileName ?? l.DocumentName
@@ -137,15 +141,37 @@ namespace ElearningAPI.Controllers
             });
         }
 
+        private IActionResult TryConvertAndServe(byte[] fileData, string? contentType, string? fileName, string? format, bool isImage = false)
+        {
+            if (format == "pdf" && !isImage && fileName != null)
+            {
+                var ext = Path.GetExtension(fileName).ToLowerInvariant();
+                if (ext != ".pdf" && (ext is ".doc" or ".docx" or ".ppt" or ".pptx"))
+                {
+                    var pdfData = _conversionService.ConvertToPdf(fileData, fileName);
+                    if (pdfData != null)
+                    {
+                        Response.Headers["Content-Disposition"] = $"inline";
+                        return File(pdfData, "application/pdf");
+                    }
+                }
+            }
+            Response.Headers["Content-Disposition"] = $"inline";
+            return File(fileData, contentType ?? "application/octet-stream");
+        }
+
         [HttpGet("lessons/{lessonId}/pdf")]
-        public async Task<IActionResult> GetLessonPdf(int lessonId)
+        public async Task<IActionResult> GetLessonPdf(int lessonId, [FromQuery] bool download = false)
         {
             var lesson = await _context.Lessons.FirstOrDefaultAsync(l => l.Id == lessonId);
             if (lesson == null) return NotFound();
 
             if (lesson.PdfFile != null && lesson.PdfFile.Length > 0)
             {
-                return File(lesson.PdfFile, lesson.PdfContentType ?? "application/pdf", lesson.PdfFileName ?? $"lesson-{lessonId}.pdf");
+                if (download)
+                    return File(lesson.PdfFile, lesson.PdfContentType ?? "application/pdf", lesson.PdfFileName ?? $"lesson-{lessonId}.pdf");
+                Response.Headers["Content-Disposition"] = $"inline";
+                return File(lesson.PdfFile, lesson.PdfContentType ?? "application/pdf");
             }
 
             if (!string.IsNullOrWhiteSpace(lesson.PdfUrl))
@@ -157,17 +183,17 @@ namespace ElearningAPI.Controllers
         }
 
         [HttpGet("lessons/{lessonId}/document")]
-        public async Task<IActionResult> GetLessonDocument(int lessonId)
+        public async Task<IActionResult> GetLessonDocument(int lessonId, [FromQuery] bool download = false, [FromQuery] string? format = null)
         {
             var lesson = await _context.Lessons.FirstOrDefaultAsync(l => l.Id == lessonId);
             if (lesson == null) return NotFound();
 
             if (lesson.DocumentFile != null && lesson.DocumentFile.Length > 0)
             {
-                return File(
-                    lesson.DocumentFile,
-                    lesson.DocumentContentType ?? "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    lesson.DocumentFileName ?? lesson.DocumentName ?? $"lesson-{lessonId}.docx");
+                if (download)
+                    return File(lesson.DocumentFile, lesson.DocumentContentType ?? "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        lesson.DocumentFileName ?? lesson.DocumentName ?? $"lesson-{lessonId}.docx");
+                return TryConvertAndServe(lesson.DocumentFile, lesson.DocumentContentType, lesson.DocumentFileName ?? lesson.DocumentName ?? "document.doc", format);
             }
 
             if (!string.IsNullOrWhiteSpace(lesson.DocumentUrl))
@@ -179,27 +205,27 @@ namespace ElearningAPI.Controllers
         }
 
         [HttpGet("lessons/{lessonId}/lesson-plan")]
-        public async Task<IActionResult> GetLessonPlan(int lessonId)
+        public async Task<IActionResult> GetLessonPlan(int lessonId, [FromQuery] bool download = false, [FromQuery] string? format = null)
         {
             var lesson = await _context.Lessons.FirstOrDefaultAsync(l => l.Id == lessonId);
             if (lesson?.LessonPlanFile == null || lesson.LessonPlanFile.Length == 0) return NotFound();
 
-            return File(
-                lesson.LessonPlanFile,
-                lesson.LessonPlanContentType ?? "application/octet-stream",
-                lesson.LessonPlanFileName ?? $"lesson-plan-{lessonId}");
+            if (download)
+                return File(lesson.LessonPlanFile, lesson.LessonPlanContentType ?? "application/octet-stream",
+                    lesson.LessonPlanFileName ?? $"lesson-plan-{lessonId}");
+            return TryConvertAndServe(lesson.LessonPlanFile, lesson.LessonPlanContentType, lesson.LessonPlanFileName ?? $"lesson-plan-{lessonId}", format);
         }
 
         [HttpGet("lessons/{lessonId}/slide")]
-        public async Task<IActionResult> GetLessonSlide(int lessonId)
+        public async Task<IActionResult> GetLessonSlide(int lessonId, [FromQuery] bool download = false, [FromQuery] string? format = null)
         {
             var lesson = await _context.Lessons.FirstOrDefaultAsync(l => l.Id == lessonId);
             if (lesson?.SlideFile == null || lesson.SlideFile.Length == 0) return NotFound();
 
-            return File(
-                lesson.SlideFile,
-                lesson.SlideContentType ?? "application/octet-stream",
-                lesson.SlideFileName ?? $"slide-{lessonId}");
+            if (download)
+                return File(lesson.SlideFile, lesson.SlideContentType ?? "application/octet-stream",
+                    lesson.SlideFileName ?? $"slide-{lessonId}");
+            return TryConvertAndServe(lesson.SlideFile, lesson.SlideContentType, lesson.SlideFileName ?? $"slide-{lessonId}", format);
         }
 
         /// <summary>GET /api/public/news/{id} — Lấy chi tiết tin tức</summary>
@@ -218,7 +244,7 @@ namespace ElearningAPI.Controllers
                 news.Title,
                 news.Content, // This contains HTML from TipTap
                 news.AvatarUrl,
-                AuthorName = news.Author != null ? news.Author.FullName : "Admin",
+                AuthorName = !string.IsNullOrWhiteSpace(news.AuthorName) ? news.AuthorName : news.Author != null ? news.Author.FullName : "Admin",
                 news.CreatedAt
             });
         }

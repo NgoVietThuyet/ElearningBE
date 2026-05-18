@@ -55,17 +55,17 @@ namespace ElearningAPI.Controllers
         }
 
         [HttpPost("students/add")]
-        public async Task<IActionResult> AddStudent([FromBody] string email)
+        public async Task<IActionResult> AddStudent([FromBody] EnrollRequestDto dto)
         {
-            var success = await _teacherService.AddStudentToClass(GetUserId(), email);
+            var success = await _teacherService.AddStudentToClass(GetUserId(), dto.Email);
             if (!success) return BadRequest(new { Message = "Khong tim thay hoc sinh hoac email khong hop le." });
             return Ok(new { Message = "Da them hoc sinh vao lop thanh cong." });
         }
 
         [HttpPost("courses/{courseId}/enroll")]
-        public async Task<IActionResult> EnrollStudent(int courseId, [FromBody] string email)
+        public async Task<IActionResult> EnrollStudent(int courseId, [FromBody] EnrollRequestDto dto)
         {
-            var success = await _teacherService.EnrollStudentInCourseAsync(GetUserId(), courseId, email);
+            var success = await _teacherService.EnrollStudentInCourseAsync(GetUserId(), courseId, dto.Email);
             if (!success) return BadRequest(new { Message = "Khong the dang ky hoc sinh vao khoa hoc. Kiem tra email hoac quyen quan ly." });
             return Ok(new { Message = "Da dang ky hoc sinh vao khoa hoc thanh cong." });
         }
@@ -201,5 +201,11 @@ namespace ElearningAPI.Controllers
     {
         public string Title { get; set; } = string.Empty;
         public string Content { get; set; } = string.Empty;
+    }
+
+    public class EnrollRequestDto
+    {
+        [Required]
+        public string Email { get; set; } = string.Empty;
     }
 }

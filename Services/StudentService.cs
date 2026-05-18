@@ -1,4 +1,4 @@
-using ElearningAPI.Data;
+﻿using ElearningAPI.Data;
 using ElearningAPI.Models;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
@@ -94,6 +94,7 @@ namespace ElearningAPI.Services
                     l.Title,
                     l.CourseId,
                     CourseTitle = l.Course.Title,
+                    l.QuizUrl,
                     Duration = "45 phút",
                     Status = "current"
                 })
@@ -101,7 +102,7 @@ namespace ElearningAPI.Services
                 .ToListAsync();
         }
 
-        public async Task<object?> GetLessonDetail(int studentId, int lessonId)
+        public async Task<object?> GetLessonDetail(int studentId, int lessonId, bool isAdmin = false)
         {
             var lesson = await _context.Lessons
                 .Include(l => l.Course)
@@ -109,8 +110,11 @@ namespace ElearningAPI.Services
                 .FirstOrDefaultAsync(l => l.Id == lessonId);
             if (lesson == null) return null;
 
-            var isEnrolled = await _context.Enrollments.AnyAsync(e => e.StudentId == studentId && e.CourseId == lesson.CourseId);
-            if (!isEnrolled) return null;
+            if (!isAdmin)
+            {
+                var isEnrolled = await _context.Enrollments.AnyAsync(e => e.StudentId == studentId && e.CourseId == lesson.CourseId);
+                if (!isEnrolled) return null;
+            }
 
             return new
             {
@@ -123,11 +127,20 @@ namespace ElearningAPI.Services
                 PdfUrl = lesson.PdfFile != null && lesson.PdfFile.Length > 0 ? $"/api/public/lessons/{lesson.Id}/pdf" : lesson.PdfUrl,
                 DocumentUrl = lesson.DocumentFile != null && lesson.DocumentFile.Length > 0 ? $"/api/public/lessons/{lesson.Id}/document" : lesson.DocumentUrl,
                 DocumentName = lesson.DocumentFileName ?? lesson.DocumentName,
+                SlideUrl = lesson.SlideFile != null && lesson.SlideFile.Length > 0 ? $"/api/public/lessons/{lesson.Id}/slide" : null,
+                SlideFileName = lesson.SlideFileName,
+                LessonPlanUrl = lesson.LessonPlanFile != null && lesson.LessonPlanFile.Length > 0 ? $"/api/public/lessons/{lesson.Id}/lesson-plan" : null,
+                LessonPlanFileName = lesson.LessonPlanFileName,
+                lesson.ArVrUrl,
+                lesson.QuizUrl,
                 Flashcards = lesson.Tests
                     .Where(t => IsContentType(t.Content, "flashcard"))
                     .Select(t => new { t.Id, t.Title, Cards = ReadJsonProperty(t.Content, "cards") }),
                 Tests = lesson.Tests
                     .Where(t => IsContentType(t.Content, "quiz"))
+                    .Select(t => new { t.Id, t.Title, Questions = ReadJsonProperty(t.Content, "questions") }),
+                Exercises = lesson.Tests
+                    .Where(t => IsContentType(t.Content, "exam"))
                     .Select(t => new { t.Id, t.Title, Questions = ReadJsonProperty(t.Content, "questions") })
             };
         }
@@ -269,3 +282,4 @@ namespace ElearningAPI.Services
         }
     }
 }
+

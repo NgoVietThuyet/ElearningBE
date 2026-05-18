@@ -58,6 +58,14 @@
               "target": "Package",
               "version": "[1.29.1, )"
             },
+            "FreeSpire.Doc": {
+              "target": "Package",
+              "version": "[14.4.0, )"
+            },
+            "FreeSpire.Presentation": {
+              "target": "Package",
+              "version": "[11.4.0, )"
+            },
             "Microsoft.AspNetCore.Authentication.JwtBearer": {
               "target": "Package",
               "version": "[8.0.11, )"

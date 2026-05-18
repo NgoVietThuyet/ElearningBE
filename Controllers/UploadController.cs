@@ -37,5 +37,26 @@ namespace ElearningAPI.Controllers
                 return Ok(new { url = base64String });
             }
         }
+
+        [HttpPost("news-image")]
+        public async Task<IActionResult> UploadNewsImage(IFormFile file)
+        {
+            if (file == null || file.Length == 0)
+                return BadRequest(new { message = "Không có file nào được chọn." });
+
+            var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif", ".webp" };
+            var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+            if (Array.IndexOf(allowedExtensions, extension) < 0)
+                return BadRequest(new { message = "Ảnh tin tức chỉ hỗ trợ JPG, PNG, GIF hoặc WEBP." });
+
+            if (file.Length > 5 * 1024 * 1024)
+                return BadRequest(new { message = "Kích thước ảnh tin tức tối đa là 5MB." });
+
+            using var ms = new MemoryStream();
+            await file.CopyToAsync(ms);
+            var base64String = $"data:{file.ContentType};base64,{Convert.ToBase64String(ms.ToArray())}";
+
+            return Ok(new { url = base64String });
+        }
     }
 }

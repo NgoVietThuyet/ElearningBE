@@ -27,11 +27,7 @@ namespace ElearningAPI.Controllers
             [FromQuery] string? keyword,
             [FromQuery] int? limit)
         {
-            var query = _context.Feedbacks
-                .Include(f => f.Course)
-                .Include(f => f.Teacher)
-                .Include(f => f.Student)
-                .AsQueryable();
+            var query = FeedbackQuery();
 
             if (courseId.HasValue) query = query.Where(f => f.CourseId == courseId.Value);
             if (teacherId.HasValue) query = query.Where(f => f.TeacherId == teacherId.Value);
@@ -45,65 +41,87 @@ namespace ElearningAPI.Controllers
                     f.Content.ToLower().Contains(normalizedKeyword));
             }
 
-            var orderedQuery = query
+            var feedbacks = await query
                 .OrderByDescending(f => f.CreatedAt)
-                .Take(limit.HasValue && limit.Value > 0 ? limit.Value : 500);
-
-            var feedbacks = await orderedQuery
-                .Select(f => new
-                {
-                    f.Id,
-                    f.CourseId,
-                    CourseTitle = f.Course != null ? f.Course.Title : "N/A",
-                    f.TeacherId,
-                    TeacherName = f.Teacher != null ? f.Teacher.FullName : "N/A",
-                    f.StudentId,
-                    StudentName = f.Student != null ? f.Student.FullName : "Người dùng đã xóa",
-                    StudentEmail = f.Student != null ? f.Student.Email : string.Empty,
-                    f.Rating,
-                    f.Content,
-                    f.Status,
-                    f.CreatedAt
-                })
+                .Take(limit.HasValue && limit.Value > 0 ? limit.Value : 500)
                 .ToListAsync();
 
-            return Ok(feedbacks);
+            return Ok(feedbacks.Select(ToListDto));
         }
 
         [HttpGet("mine")]
         [Authorize(Roles = "STUDENT,TEACHER,ADMIN")]
         public async Task<IActionResult> GetMyFeedbacks()
         {
-            var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (!int.TryParse(userIdString, out var userId)) return Unauthorized();
+            var userId = GetCurrentUserId();
+            if (!userId.HasValue) return Unauthorized();
 
-            var feedbacks = await _context.Feedbacks
-                .Include(f => f.Course)
-                .Include(f => f.Teacher)
-                .Include(f => f.Student)
-                .Where(f => f.StudentId == userId)
+            var feedbacks = await FeedbackQuery()
+                .Where(f => f.AuthorId == userId.Value || f.StudentId == userId.Value)
                 .OrderByDescending(f => f.CreatedAt)
-                .Select(f => new
-                {
-                    f.Id,
-                    f.CourseId,
-                    CourseTitle = f.Course != null ? f.Course.Title : "N/A",
-                    f.TeacherId,
-                    TeacherName = f.Teacher != null ? f.Teacher.FullName : "N/A",
-                    f.StudentId,
-                    StudentName = f.Student != null ? f.Student.FullName : "Người dùng đã xóa",
-                    StudentEmail = f.Student != null ? f.Student.Email : string.Empty,
-                    f.Rating,
-                    f.Content,
-                    f.Status,
-                    f.CreatedAt
-                })
                 .ToListAsync();
 
-            return Ok(feedbacks);
+            return Ok(feedbacks.Select(ToListDto));
+        }
+
+        [HttpGet("course/{courseId}/thread")]
+        public async Task<IActionResult> GetCourseFeedbackThread(int courseId)
+        {
+            var feedbacks = await FeedbackQuery()
+                .Where(f => f.CourseId == courseId)
+                .OrderBy(f => f.CreatedAt)
+                .ToListAsync();
+
+            var repliesByParent = feedbacks
+                .Where(f => f.ParentFeedbackId.HasValue)
+                .GroupBy(f => f.ParentFeedbackId!.Value)
+                .ToDictionary(g => g.Key, g => g.OrderBy(r => r.CreatedAt).Select(ToThreadDto).ToList());
+
+            var roots = feedbacks
+                .Where(f => !f.ParentFeedbackId.HasValue)
+                .OrderBy(f => f.CreatedAt)
+                .Select(f =>
+                {
+                    var dto = ToThreadDto(f);
+                    dto.Replies = repliesByParent.TryGetValue(f.Id, out var replies) ? replies : new List<FeedbackThreadDto>();
+                    return dto;
+                })
+                .ToList();
+
+            return Ok(roots);
+        }
+
+        [HttpGet("thread")]
+        public async Task<IActionResult> GetFeedbackThread([FromQuery] int? courseId)
+        {
+            var query = FeedbackQuery();
+            if (courseId.HasValue) query = query.Where(f => f.CourseId == courseId.Value);
+
+            var feedbacks = await query
+                .OrderBy(f => f.CreatedAt)
+                .ToListAsync();
+
+            var repliesByParent = feedbacks
+                .Where(f => f.ParentFeedbackId.HasValue)
+                .GroupBy(f => f.ParentFeedbackId!.Value)
+                .ToDictionary(g => g.Key, g => g.OrderBy(r => r.CreatedAt).Select(ToThreadDto).ToList());
+
+            var roots = feedbacks
+                .Where(f => !f.ParentFeedbackId.HasValue)
+                .OrderBy(f => f.CreatedAt)
+                .Select(f =>
+                {
+                    var dto = ToThreadDto(f);
+                    dto.Replies = repliesByParent.TryGetValue(f.Id, out var replies) ? replies : new List<FeedbackThreadDto>();
+                    return dto;
+                })
+                .ToList();
+
+            return Ok(roots);
         }
 
         [HttpPost]
+        [Authorize(Roles = "STUDENT,TEACHER,ADMIN")]
         public async Task<IActionResult> CreateFeedback([FromBody] CreateFeedbackDto dto)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
@@ -116,15 +134,15 @@ namespace ElearningAPI.Controllers
                 u.Id == teacherId && (u.Role == UserRole.TEACHER || u.Role == UserRole.ADMIN));
             if (teacher == null) return BadRequest(new { Message = "Không tìm thấy người phụ trách khóa học." });
 
-            int? userId = null;
-            var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (int.TryParse(userIdString, out var parsedUserId)) userId = parsedUserId;
+            var userId = GetCurrentUserId();
+            if (!userId.HasValue) return Unauthorized();
 
             var feedback = new Feedback
             {
                 CourseId = dto.CourseId,
                 TeacherId = teacherId,
                 StudentId = userId,
+                AuthorId = userId,
                 Rating = dto.Rating,
                 Content = dto.Content.Trim(),
                 Status = "Đã ghi nhận",
@@ -134,7 +152,38 @@ namespace ElearningAPI.Controllers
             _context.Feedbacks.Add(feedback);
             await _context.SaveChangesAsync();
 
-            return CreatedAtAction(nameof(GetFeedbacks), new { id = feedback.Id }, new { feedback.Id });
+            return CreatedAtAction(nameof(GetCourseFeedbackThread), new { courseId = feedback.CourseId }, new { feedback.Id });
+        }
+
+        [HttpPost("{feedbackId}/replies")]
+        [Authorize(Roles = "STUDENT,TEACHER,ADMIN")]
+        public async Task<IActionResult> CreateReply(int feedbackId, [FromBody] CreateFeedbackReplyDto dto)
+        {
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+
+            var parent = await _context.Feedbacks.FirstOrDefaultAsync(f => f.Id == feedbackId);
+            if (parent == null) return NotFound(new { Message = "Không tìm thấy feedback." });
+
+            var userId = GetCurrentUserId();
+            if (!userId.HasValue) return Unauthorized();
+
+            var reply = new Feedback
+            {
+                CourseId = parent.CourseId,
+                TeacherId = parent.TeacherId,
+                StudentId = null,
+                AuthorId = userId,
+                ParentFeedbackId = parent.Id,
+                Rating = parent.Rating,
+                Content = dto.Content.Trim(),
+                Status = "Đã phản hồi",
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _context.Feedbacks.Add(reply);
+            await _context.SaveChangesAsync();
+
+            return CreatedAtAction(nameof(GetCourseFeedbackThread), new { courseId = reply.CourseId }, new { reply.Id });
         }
 
         [HttpGet("filters")]
@@ -160,6 +209,77 @@ namespace ElearningAPI.Controllers
 
             return Ok(new { Courses = courses, Teachers = teachers });
         }
+
+        private IQueryable<Feedback> FeedbackQuery()
+        {
+            return _context.Feedbacks
+                .Include(f => f.Course)
+                .Include(f => f.Teacher)
+                .Include(f => f.Student)
+                .Include(f => f.Author)
+                .AsQueryable();
+        }
+
+        private int? GetCurrentUserId()
+        {
+            var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            return int.TryParse(userIdString, out var userId) ? userId : null;
+        }
+
+        private static object ToListDto(Feedback f)
+        {
+            var dto = ToThreadDto(f);
+            return new
+            {
+                dto.Id,
+                dto.CourseId,
+                dto.CourseTitle,
+                dto.TeacherId,
+                dto.TeacherName,
+                dto.StudentId,
+                dto.StudentName,
+                dto.StudentEmail,
+                dto.AuthorId,
+                dto.AuthorName,
+                dto.AuthorRole,
+                dto.ParentFeedbackId,
+                dto.Rating,
+                dto.Content,
+                dto.Status,
+                dto.CreatedAt
+            };
+        }
+
+        private static FeedbackThreadDto ToThreadDto(Feedback f)
+        {
+            var authorName = f.Author?.FullName
+                ?? f.Student?.FullName
+                ?? f.Teacher?.FullName
+                ?? "Người dùng";
+
+            var authorRole = f.Author?.Role.ToString()
+                ?? (f.StudentId.HasValue ? "STUDENT" : "TEACHER");
+
+            return new FeedbackThreadDto
+            {
+                Id = f.Id,
+                CourseId = f.CourseId,
+                CourseTitle = f.Course?.Title ?? "N/A",
+                TeacherId = f.TeacherId,
+                TeacherName = f.Teacher?.FullName ?? "N/A",
+                StudentId = f.StudentId,
+                StudentName = f.Student?.FullName ?? authorName,
+                StudentEmail = f.Student?.Email ?? string.Empty,
+                AuthorId = f.AuthorId,
+                AuthorName = authorName,
+                AuthorRole = authorRole,
+                ParentFeedbackId = f.ParentFeedbackId,
+                Rating = f.Rating,
+                Content = f.Content,
+                Status = f.Status,
+                CreatedAt = f.CreatedAt,
+            };
+        }
     }
 
     public class CreateFeedbackDto
@@ -174,5 +294,32 @@ namespace ElearningAPI.Controllers
 
         [Required, MinLength(5)]
         public string Content { get; set; } = string.Empty;
+    }
+
+    public class CreateFeedbackReplyDto
+    {
+        [Required, MinLength(2)]
+        public string Content { get; set; } = string.Empty;
+    }
+
+    public class FeedbackThreadDto
+    {
+        public int Id { get; set; }
+        public int CourseId { get; set; }
+        public string CourseTitle { get; set; } = string.Empty;
+        public int TeacherId { get; set; }
+        public string TeacherName { get; set; } = string.Empty;
+        public int? StudentId { get; set; }
+        public string StudentName { get; set; } = string.Empty;
+        public string StudentEmail { get; set; } = string.Empty;
+        public int? AuthorId { get; set; }
+        public string AuthorName { get; set; } = string.Empty;
+        public string AuthorRole { get; set; } = string.Empty;
+        public int? ParentFeedbackId { get; set; }
+        public int Rating { get; set; }
+        public string Content { get; set; } = string.Empty;
+        public string Status { get; set; } = string.Empty;
+        public DateTime CreatedAt { get; set; }
+        public List<FeedbackThreadDto> Replies { get; set; } = new();
     }
 }

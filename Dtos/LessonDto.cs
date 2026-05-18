@@ -35,6 +35,9 @@ namespace ElearningAPI.Dtos
 
         [MaxLength(500)]
         public string? ArVrUrl { get; set; }
+
+        [MaxLength(500)]
+        public string? QuizUrl { get; set; }
     }
 
     public class LessonResponseDto : LessonDto

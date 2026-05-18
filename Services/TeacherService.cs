@@ -249,7 +249,8 @@ namespace ElearningAPI.Services
                     SlideUrl = l.SlideFile != null && l.SlideFile.Length > 0 ? $"/api/public/lessons/{l.Id}/slide" : null,
                     l.SlideFileName,
                     l.ArVrUrl,
-                    QuizCount = l.Tests.Count,
+                    l.QuizUrl,
+                    QuizCount = string.IsNullOrWhiteSpace(l.QuizUrl) ? 0 : 1,
                     StudentCount = _context.Enrollments.Count(e => e.CourseId == l.CourseId),
                     Progress = Math.Round(_context.Enrollments
                         .Where(e => e.CourseId == l.CourseId)
@@ -338,6 +339,7 @@ namespace ElearningAPI.Services
                 DocumentUrl = dto.DocumentUrl,
                 DocumentName = dto.DocumentName,
                 ArVrUrl = dto.ArVrUrl,
+                QuizUrl = dto.QuizUrl,
                 CreatedBy = teacherId,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
@@ -366,6 +368,7 @@ namespace ElearningAPI.Services
             lesson.DocumentUrl = dto.DocumentUrl;
             lesson.DocumentName = dto.DocumentName;
             lesson.ArVrUrl = dto.ArVrUrl;
+            lesson.QuizUrl = dto.QuizUrl;
             lesson.UpdatedAt = DateTime.UtcNow;
 
             await ApplyLessonFilesAsync(lesson, dto);
@@ -632,7 +635,8 @@ namespace ElearningAPI.Services
                     SlideUrl = l.SlideFile != null && l.SlideFile.Length > 0 ? $"/api/public/lessons/{l.Id}/slide" : null,
                     l.SlideFileName,
                     l.ArVrUrl,
-                    QuizCount = l.Tests.Count,
+                    l.QuizUrl,
+                    QuizCount = string.IsNullOrWhiteSpace(l.QuizUrl) ? 0 : 1,
                     StudentCount = _context.Enrollments.Count(e => e.CourseId == l.CourseId),
                     Progress = Math.Round(_context.Enrollments
                         .Where(e => e.CourseId == l.CourseId)

@@ -65,6 +65,9 @@ namespace ElearningAPI.Models
 
         [MaxLength(500)]
         public string? ArVrUrl { get; set; }
+
+        [MaxLength(500)]
+        public string? QuizUrl { get; set; }
         
         public int CreatedBy { get; set; }
         [ForeignKey("CreatedBy")]

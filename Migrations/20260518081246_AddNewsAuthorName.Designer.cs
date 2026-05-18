@@ -3,6 +3,7 @@ using System;
 using ElearningAPI.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace ElearningAPI.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260518081246_AddNewsAuthorName")]
+    partial class AddNewsAuthorName
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -196,9 +199,6 @@ namespace ElearningAPI.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
-                    b.Property<int?>("AuthorId")
-                        .HasColumnType("integer");
-
                     b.Property<string>("Content")
                         .IsRequired()
                         .HasColumnType("text");
@@ -208,9 +208,6 @@ namespace ElearningAPI.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<int?>("ParentFeedbackId")
-                        .HasColumnType("integer");
 
                     b.Property<int>("Rating")
                         .HasColumnType("integer");
@@ -228,11 +225,7 @@ namespace ElearningAPI.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("AuthorId");
-
                     b.HasIndex("CourseId");
-
-                    b.HasIndex("ParentFeedbackId");
 
                     b.HasIndex("StudentId");
 
@@ -590,21 +583,11 @@ namespace ElearningAPI.Migrations
 
             modelBuilder.Entity("ElearningAPI.Models.Feedback", b =>
                 {
-                    b.HasOne("ElearningAPI.Models.User", "Author")
-                        .WithMany()
-                        .HasForeignKey("AuthorId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
                     b.HasOne("ElearningAPI.Models.Course", "Course")
                         .WithMany()
                         .HasForeignKey("CourseId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.HasOne("ElearningAPI.Models.Feedback", "ParentFeedback")
-                        .WithMany("Replies")
-                        .HasForeignKey("ParentFeedbackId")
-                        .OnDelete(DeleteBehavior.Cascade);
 
                     b.HasOne("ElearningAPI.Models.User", "Student")
                         .WithMany()
@@ -617,11 +600,7 @@ namespace ElearningAPI.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.Navigation("Author");
-
                     b.Navigation("Course");
-
-                    b.Navigation("ParentFeedback");
 
                     b.Navigation("Student");
 
@@ -714,11 +693,6 @@ namespace ElearningAPI.Migrations
                     b.Navigation("Lessons");
 
                     b.Navigation("Materials");
-                });
-
-            modelBuilder.Entity("ElearningAPI.Models.Feedback", b =>
-                {
-                    b.Navigation("Replies");
                 });
 
             modelBuilder.Entity("ElearningAPI.Models.Lesson", b =>

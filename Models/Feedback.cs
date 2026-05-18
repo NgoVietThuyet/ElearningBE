@@ -20,6 +20,16 @@ namespace ElearningAPI.Models
         [ForeignKey("StudentId")]
         public User? Student { get; set; }
 
+        public int? AuthorId { get; set; }
+        [ForeignKey("AuthorId")]
+        public User? Author { get; set; }
+
+        public int? ParentFeedbackId { get; set; }
+        [ForeignKey("ParentFeedbackId")]
+        public Feedback? ParentFeedback { get; set; }
+
+        public ICollection<Feedback> Replies { get; set; } = new List<Feedback>();
+
         [Range(1, 5)]
         public int Rating { get; set; }
 
