@@ -678,12 +678,67 @@ namespace ElearningAPI.Services
 
         public async Task<bool> DeleteCourseAsync(int id)
         {
-            var course = await _context.Courses.FindAsync(id);
-            if (course == null) return false;
+            var strategy = _context.Database.CreateExecutionStrategy();
 
-            _context.Courses.Remove(course);
-            await _context.SaveChangesAsync();
-            return true;
+            return await strategy.ExecuteAsync(async () =>
+            {
+                var exists = await _context.Courses.AnyAsync(c => c.Id == id);
+                if (!exists) return false;
+
+                await using var transaction = await _context.Database.BeginTransactionAsync();
+
+                var lessonIds = await _context.Lessons
+                    .Where(l => l.CourseId == id)
+                    .Select(l => l.Id)
+                    .ToListAsync();
+
+                var testIds = await _context.Tests
+                    .Where(t => lessonIds.Contains(t.LessonId))
+                    .Select(t => t.Id)
+                    .ToListAsync();
+
+                var testResults = await _context.TestResults
+                    .Where(tr => testIds.Contains(tr.TestId))
+                    .ToListAsync();
+                _context.TestResults.RemoveRange(testResults);
+
+                var tests = await _context.Tests
+                    .Where(t => lessonIds.Contains(t.LessonId))
+                    .ToListAsync();
+                _context.Tests.RemoveRange(tests);
+
+                var lessons = await _context.Lessons
+                    .Where(l => l.CourseId == id)
+                    .ToListAsync();
+                _context.Lessons.RemoveRange(lessons);
+
+                var materials = await _context.CourseMaterials
+                    .Where(m => m.CourseId == id)
+                    .ToListAsync();
+                _context.CourseMaterials.RemoveRange(materials);
+
+                var enrollments = await _context.Enrollments
+                    .Where(e => e.CourseId == id)
+                    .ToListAsync();
+                _context.Enrollments.RemoveRange(enrollments);
+
+                var feedbackReplies = await _context.Feedbacks
+                    .Where(f => f.CourseId == id && f.ParentFeedbackId != null)
+                    .ToListAsync();
+                _context.Feedbacks.RemoveRange(feedbackReplies);
+
+                var feedbacks = await _context.Feedbacks
+                    .Where(f => f.CourseId == id)
+                    .ToListAsync();
+                _context.Feedbacks.RemoveRange(feedbacks);
+
+                var course = await _context.Courses.FindAsync(id);
+                if (course != null) _context.Courses.Remove(course);
+
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+                return true;
+            });
         }
 
         // --- Lesson Methods ---
