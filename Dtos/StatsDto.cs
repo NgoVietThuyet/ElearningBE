@@ -42,6 +42,13 @@ namespace ElearningAPI.Dtos
         public int Count { get; set; }
     }
 
+    public class CourseCompletionDto
+    {
+        public string CourseTitle { get; set; } = string.Empty;
+        public int Completed { get; set; }
+        public int Incomplete { get; set; }
+    }
+
     public class RecentActivityDto
     {
         public string Type { get; set; } // "NEWS" or "COURSE"

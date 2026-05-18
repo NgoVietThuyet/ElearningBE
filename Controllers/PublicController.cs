@@ -21,14 +21,32 @@ namespace ElearningAPI.Controllers
         }
 
         /// <summary>GET /api/public/courses — Lấy danh sách khóa học (public)</summary>
+        [HttpGet("users/{id}/avatar")]
+        public async Task<IActionResult> GetUserAvatar(int id)
+        {
+            var avatar = await _context.Users
+                .AsNoTracking()
+                .Where(u => u.Id == id)
+                .Select(u => new
+                {
+                    u.AvatarImage,
+                    u.AvatarContentType
+                })
+                .FirstOrDefaultAsync();
+
+            if (avatar?.AvatarImage == null || avatar.AvatarImage.Length == 0 || string.IsNullOrWhiteSpace(avatar.AvatarContentType))
+            {
+                return NotFound();
+            }
+
+            return File(avatar.AvatarImage, avatar.AvatarContentType);
+        }
+
         [HttpGet("courses")]
         public async Task<IActionResult> GetCourses()
         {
             var courses = await _context.Courses
-                .Include(c => c.Creator)
-                .Include(c => c.Teacher)
-                .Include(c => c.Lessons)
-                .Include(c => c.Enrollments)
+                .AsNoTracking()
                 .OrderByDescending(c => c.CreatedAt)
                 .Select(c => new
                 {
@@ -86,59 +104,67 @@ namespace ElearningAPI.Controllers
         public async Task<IActionResult> GetCourseById(int id)
         {
             var course = await _context.Courses
-                .Include(c => c.Creator)
-                .Include(c => c.Teacher)
-                .Include(c => c.Lessons)
-                .Include(c => c.Enrollments)
-                    .ThenInclude(e => e.Student)
-                .FirstOrDefaultAsync(c => c.Id == id);
+                .AsNoTracking()
+                .Where(c => c.Id == id)
+                .Select(c => new
+                {
+                    c.Id,
+                    c.Title,
+                    c.Description,
+                    c.AvatarUrl,
+                    c.Code,
+                    c.IntroVideoUrl,
+                    c.Category,
+                    c.Status,
+                    c.Level,
+                    c.Language,
+                    c.DurationMinutes,
+                    c.ExpectedStudentCount,
+                    c.StartDate,
+                    c.EndDate,
+                    c.LearningOutcomes,
+                    CreatorName = c.Creator != null ? c.Creator.FullName : "Admin",
+                    c.TeacherId,
+                    TeacherName = c.Teacher != null ? c.Teacher.FullName : string.Empty,
+                    TeacherAvatarUrl = c.Teacher != null
+                        ? (!string.IsNullOrWhiteSpace(c.Teacher.AvatarUrl)
+                            ? c.Teacher.AvatarUrl
+                            : (c.Teacher.AvatarImage != null ? $"/api/public/users/{c.Teacher.Id}/avatar" : null))
+                        : null,
+                    LessonCount = c.Lessons.Count,
+                    StudentCount = c.ExpectedStudentCount > 0 ? c.ExpectedStudentCount : c.Enrollments.Count,
+                    AverageProgress = c.Enrollments.Any() ? c.Enrollments.Average(e => e.ProgressPercentage) : 0,
+                    c.CreatedAt,
+                    Lessons = c.Lessons
+                        .OrderBy(l => l.CreatedAt)
+                        .Select(l => new
+                        {
+                            l.Id,
+                            l.Title,
+                            l.Description,
+                            l.VideoUrl,
+                            l.QuizUrl,
+                            l.ArVrUrl,
+                            SlideUrl = !string.IsNullOrWhiteSpace(l.SlideFileName) || !string.IsNullOrWhiteSpace(l.SlideContentType) ? $"/api/public/lessons/{l.Id}/slide" : null,
+                            l.SlideFileName,
+                            LessonPlanUrl = !string.IsNullOrWhiteSpace(l.LessonPlanFileName) || !string.IsNullOrWhiteSpace(l.LessonPlanContentType) ? $"/api/public/lessons/{l.Id}/lesson-plan" : null,
+                            l.LessonPlanFileName,
+                            PdfUrl = !string.IsNullOrWhiteSpace(l.PdfFileName) || !string.IsNullOrWhiteSpace(l.PdfContentType) ? $"/api/public/lessons/{l.Id}/pdf" : l.PdfUrl,
+                            DocumentUrl = !string.IsNullOrWhiteSpace(l.DocumentFileName) || !string.IsNullOrWhiteSpace(l.DocumentContentType) ? $"/api/public/lessons/{l.Id}/document" : l.DocumentUrl,
+                            DocumentName = l.DocumentFileName ?? l.DocumentName
+                        }),
+                    Students = c.Enrollments.Select(e => new
+                    {
+                        e.Student.Id,
+                        e.Student.FullName,
+                        e.Student.Email,
+                        EnrolledAt = e.EnrolledAt
+                    })
+                })
+                .FirstOrDefaultAsync();
 
             if (course == null) return NotFound();
-
-            return Ok(new
-            {
-                course.Id,
-                course.Title,
-                course.Description,
-                course.AvatarUrl,
-                course.Code,
-                course.IntroVideoUrl,
-                course.Category,
-                course.Status,
-                course.Level,
-                course.Language,
-                course.DurationMinutes,
-                course.ExpectedStudentCount,
-                course.StartDate,
-                course.EndDate,
-                course.LearningOutcomes,
-                CreatorName = course.Creator != null ? course.Creator.FullName : "Admin",
-                TeacherId = course.TeacherId,
-                TeacherName = course.Teacher != null ? course.Teacher.FullName : string.Empty,
-                TeacherAvatarUrl = course.Teacher != null ? course.Teacher.AvatarUrl : null,
-                LessonCount = course.Lessons.Count,
-                StudentCount = course.ExpectedStudentCount > 0 ? course.ExpectedStudentCount : course.Enrollments.Count,
-                AverageProgress = course.Enrollments.Any() ? course.Enrollments.Average(e => e.ProgressPercentage) : 0,
-                course.CreatedAt,
-                Lessons = course.Lessons.OrderBy(l => l.CreatedAt).Select(l => new
-                {
-                    l.Id,
-                    l.Title,
-                    l.Description,
-                    l.VideoUrl,
-                    l.QuizUrl,
-                    PdfUrl = l.PdfFile != null && l.PdfFile.Length > 0 ? $"/api/public/lessons/{l.Id}/pdf" : l.PdfUrl,
-                    DocumentUrl = l.DocumentFile != null && l.DocumentFile.Length > 0 ? $"/api/public/lessons/{l.Id}/document" : l.DocumentUrl,
-                    DocumentName = l.DocumentFileName ?? l.DocumentName
-                }),
-                Students = course.Enrollments.Select(e => new
-                {
-                    e.Student.Id,
-                    e.Student.FullName,
-                    e.Student.Email,
-                    EnrolledAt = e.EnrolledAt
-                })
-            });
+            return Ok(course);
         }
 
         private IActionResult TryConvertAndServe(byte[] fileData, string? contentType, string? fileName, string? format, bool isImage = false)
@@ -281,9 +307,9 @@ namespace ElearningAPI.Controllers
                     u.FullName,
                     u.Email,
                     // Chỉ trả về avatarUrl nếu là URL thực (http/https), bỏ qua base64 để tránh response quá lớn
-                    AvatarUrl = (u.AvatarUrl != null && (u.AvatarUrl.StartsWith("http://") || u.AvatarUrl.StartsWith("https://")))
+                    AvatarUrl = !string.IsNullOrWhiteSpace(u.AvatarUrl)
                         ? u.AvatarUrl
-                        : null,
+                        : (u.AvatarImage != null ? $"/api/public/users/{u.Id}/avatar" : null),
                     StudentCount = u.StudentsManaged.Count,
                     LessonCount = u.CreatedLessons.Count,
                     Score = (u.StudentsManaged.Count + u.CreatedLessons.Count) / 2.0
@@ -306,9 +332,9 @@ namespace ElearningAPI.Controllers
                     u.Id,
                     u.FullName,
                     u.Email,
-                    AvatarUrl = (u.AvatarUrl != null && (u.AvatarUrl.StartsWith("http://") || u.AvatarUrl.StartsWith("https://")))
+                    AvatarUrl = !string.IsNullOrWhiteSpace(u.AvatarUrl)
                         ? u.AvatarUrl
-                        : null,
+                        : (u.AvatarImage != null ? $"/api/public/users/{u.Id}/avatar" : null),
                     StudentCount = u.StudentsManaged.Count,
                     LessonCount = u.CreatedLessons.Count,
                     Score = (u.StudentsManaged.Count + u.CreatedLessons.Count) / 2.0

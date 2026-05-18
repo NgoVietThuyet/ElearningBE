@@ -164,7 +164,9 @@ namespace ElearningAPI.Services
                 FullName = user.FullName,
                 Email = user.Email,
                 Role = user.Role.ToString(),
-                AvatarUrl = user.AvatarUrl,
+                AvatarUrl = !string.IsNullOrWhiteSpace(user.AvatarUrl)
+                    ? user.AvatarUrl
+                    : (user.AvatarImage != null ? $"/api/public/users/{user.Id}/avatar" : null),
                 AvatarImageDataUrl = user.AvatarImage != null && !string.IsNullOrWhiteSpace(user.AvatarContentType)
                     ? $"data:{user.AvatarContentType};base64,{Convert.ToBase64String(user.AvatarImage)}"
                     : null,
@@ -331,8 +333,41 @@ namespace ElearningAPI.Services
         // --- User Methods ---
         public async Task<IEnumerable<UserResponseDto>> GetAllUsersAsync()
         {
-            var users = await _context.Users.AsNoTracking().ToListAsync();
-            return users.Select(ToUserResponse);
+            return await _context.Users
+                .AsNoTracking()
+                .Select(user => new UserResponseDto
+                {
+                    Id = user.Id,
+                    FullName = user.FullName,
+                    Email = user.Email,
+                    Role = user.Role.ToString(),
+                    AvatarUrl = !string.IsNullOrWhiteSpace(user.AvatarUrl)
+                        ? user.AvatarUrl
+                        : (user.AvatarImage != null ? $"/api/public/users/{user.Id}/avatar" : null),
+                    AvatarImageDataUrl = null,
+                    AvatarContentType = user.AvatarContentType,
+                    AvatarFileName = user.AvatarFileName,
+                    DateOfBirth = user.DateOfBirth,
+                    Gender = user.Gender,
+                    PhoneNumber = user.PhoneNumber,
+                    Address = user.Address,
+                    TeachingExperienceYears = user.TeachingExperienceYears,
+                    ShortBio = user.ShortBio,
+                    IsActive = user.IsActive,
+                    AssignedCourseId = _context.Courses
+                        .Where(c => c.TeacherId == user.Id)
+                        .OrderByDescending(c => c.UpdatedAt)
+                        .Select(c => (int?)c.Id)
+                        .FirstOrDefault(),
+                    AssignedCourseTitle = _context.Courses
+                        .Where(c => c.TeacherId == user.Id)
+                        .OrderByDescending(c => c.UpdatedAt)
+                        .Select(c => c.Title)
+                        .FirstOrDefault(),
+                    CreatedAt = user.CreatedAt,
+                    UpdatedAt = user.UpdatedAt
+                })
+                .ToListAsync();
         }
 
         public async Task<UserResponseDto?> GetUserByIdAsync(int id)
@@ -436,12 +471,118 @@ namespace ElearningAPI.Services
 
         public async Task<bool> DeleteUserAsync(int id)
         {
-            var user = await _context.Users.FindAsync(id);
-            if (user == null) return false;
+            var strategy = _context.Database.CreateExecutionStrategy();
 
-            _context.Users.Remove(user);
-            await _context.SaveChangesAsync();
-            return true;
+            return await strategy.ExecuteAsync(async () =>
+            {
+                await using var transaction = await _context.Database.BeginTransactionAsync();
+
+                var user = await _context.Users.FindAsync(id);
+                if (user == null) return false;
+
+                var fallbackAdminId = await _context.Users
+                    .Where(u => u.Id != id && u.Role == UserRole.ADMIN)
+                    .OrderBy(u => u.Id)
+                    .Select(u => (int?)u.Id)
+                    .FirstOrDefaultAsync();
+
+                var assignedCourses = await _context.Courses
+                    .Where(c => c.TeacherId == id)
+                    .ToListAsync();
+                foreach (var course in assignedCourses)
+                {
+                    course.TeacherId = null;
+                    course.UpdatedAt = DateTime.UtcNow;
+                }
+
+                var createdCourses = await _context.Courses
+                    .Where(c => c.CreatedBy == id)
+                    .ToListAsync();
+                if (createdCourses.Count > 0)
+                {
+                    if (!fallbackAdminId.HasValue)
+                    {
+                        throw new InvalidOperationException("Không thể xóa người dùng này vì họ đang tạo khóa học và không còn admin khác để nhận lại dữ liệu.");
+                    }
+
+                    foreach (var course in createdCourses)
+                    {
+                        course.CreatedBy = fallbackAdminId.Value;
+                        course.UpdatedAt = DateTime.UtcNow;
+                    }
+                }
+
+                var createdLessons = await _context.Lessons
+                    .Where(l => l.CreatedBy == id)
+                    .ToListAsync();
+                if (createdLessons.Count > 0)
+                {
+                    if (!fallbackAdminId.HasValue)
+                    {
+                        throw new InvalidOperationException("Không thể xóa người dùng này vì họ đang tạo bài giảng và không còn admin khác để nhận lại dữ liệu.");
+                    }
+
+                    foreach (var lesson in createdLessons)
+                    {
+                        lesson.CreatedBy = fallbackAdminId.Value;
+                        lesson.UpdatedAt = DateTime.UtcNow;
+                    }
+                }
+
+                var authoredNews = await _context.News
+                    .Where(n => n.AuthorId == id)
+                    .ToListAsync();
+                if (authoredNews.Count > 0)
+                {
+                    if (!fallbackAdminId.HasValue)
+                    {
+                        throw new InvalidOperationException("Không thể xóa người dùng này vì họ đang tạo tin tức và không còn admin khác để nhận lại dữ liệu.");
+                    }
+
+                    foreach (var news in authoredNews)
+                    {
+                        news.AuthorId = fallbackAdminId.Value;
+                        news.UpdatedAt = DateTime.UtcNow;
+                    }
+                }
+
+                var teacherStudentLinks = await _context.TeacherStudents
+                    .Where(ts => ts.TeacherId == id || ts.StudentId == id)
+                    .ToListAsync();
+                _context.TeacherStudents.RemoveRange(teacherStudentLinks);
+
+                var feedbackReferences = await _context.Feedbacks
+                    .Where(f => f.TeacherId != id && (f.StudentId == id || f.AuthorId == id))
+                    .ToListAsync();
+                foreach (var feedback in feedbackReferences)
+                {
+                    if (feedback.StudentId == id)
+                    {
+                        feedback.StudentId = null;
+                    }
+
+                    if (feedback.AuthorId == id)
+                    {
+                        feedback.AuthorId = null;
+                    }
+                }
+
+                var teacherFeedbackReplies = await _context.Feedbacks
+                    .Where(f => f.TeacherId == id && f.ParentFeedbackId != null)
+                    .ToListAsync();
+                _context.Feedbacks.RemoveRange(teacherFeedbackReplies);
+
+                var teacherFeedbacks = await _context.Feedbacks
+                    .Where(f => f.TeacherId == id)
+                    .ToListAsync();
+                _context.Feedbacks.RemoveRange(teacherFeedbacks);
+
+                _context.Users.Remove(user);
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                return true;
+            });
         }
 
         // --- News Methods ---
@@ -540,10 +681,7 @@ namespace ElearningAPI.Services
         public async Task<IEnumerable<CourseResponseDto>> GetAllCoursesAsync()
         {
             return await _context.Courses
-                .Include(c => c.Creator)
-                .Include(c => c.Teacher)
-                .Include(c => c.Lessons)
-                .Include(c => c.Enrollments)
+                .AsNoTracking()
                 .Select(c => new CourseResponseDto
                 {
                     Id = c.Id,
@@ -564,7 +702,11 @@ namespace ElearningAPI.Services
                     CreatorName = c.Creator != null ? c.Creator.FullName : string.Empty,
                     TeacherId = c.TeacherId,
                     TeacherName = c.Teacher != null ? c.Teacher.FullName : string.Empty,
-                    TeacherAvatarUrl = c.Teacher != null ? c.Teacher.AvatarUrl : null,
+                    TeacherAvatarUrl = c.Teacher != null
+                        ? (!string.IsNullOrWhiteSpace(c.Teacher.AvatarUrl)
+                            ? c.Teacher.AvatarUrl
+                            : (c.Teacher.AvatarImage != null ? $"/api/public/users/{c.Teacher.Id}/avatar" : null))
+                        : null,
                     AvatarUrl = c.AvatarUrl,
                     LessonCount = c.Lessons.Count,
                     StudentCount = c.ExpectedStudentCount > 0 ? c.ExpectedStudentCount : c.Enrollments.Count,
@@ -577,43 +719,42 @@ namespace ElearningAPI.Services
 
         public async Task<CourseResponseDto?> GetCourseByIdAsync(int id)
         {
-            var course = await _context.Courses
-                .Include(c => c.Creator)
-                .Include(c => c.Teacher)
-                .Include(c => c.Lessons)
-                .Include(c => c.Enrollments)
-                .FirstOrDefaultAsync(c => c.Id == id);
-
-            if (course == null) return null;
-
-            return new CourseResponseDto
-            {
-                Id = course.Id,
-                Title = course.Title,
-                Description = course.Description,
-                Code = course.Code,
-                IntroVideoUrl = course.IntroVideoUrl,
-                Category = course.Category,
-                Status = course.Status,
-                Level = course.Level,
-                Language = course.Language,
-                DurationMinutes = course.DurationMinutes,
-                ExpectedStudentCount = course.ExpectedStudentCount,
-                StartDate = course.StartDate,
-                EndDate = course.EndDate,
-                LearningOutcomes = course.LearningOutcomes,
-                CreatedBy = course.CreatedBy,
-                CreatorName = course.Creator != null ? course.Creator.FullName : string.Empty,
-                TeacherId = course.TeacherId,
-                TeacherName = course.Teacher != null ? course.Teacher.FullName : string.Empty,
-                TeacherAvatarUrl = course.Teacher != null ? course.Teacher.AvatarUrl : null,
-                AvatarUrl = course.AvatarUrl,
-                LessonCount = course.Lessons.Count,
-                StudentCount = course.ExpectedStudentCount > 0 ? course.ExpectedStudentCount : course.Enrollments.Count,
-                AverageProgress = course.Enrollments.Any() ? course.Enrollments.Average(e => e.ProgressPercentage) : 0,
-                CreatedAt = course.CreatedAt,
-                UpdatedAt = course.UpdatedAt
-            };
+            return await _context.Courses
+                .AsNoTracking()
+                .Where(c => c.Id == id)
+                .Select(c => new CourseResponseDto
+                {
+                    Id = c.Id,
+                    Title = c.Title,
+                    Description = c.Description,
+                    Code = c.Code,
+                    IntroVideoUrl = c.IntroVideoUrl,
+                    Category = c.Category,
+                    Status = c.Status,
+                    Level = c.Level,
+                    Language = c.Language,
+                    DurationMinutes = c.DurationMinutes,
+                    ExpectedStudentCount = c.ExpectedStudentCount,
+                    StartDate = c.StartDate,
+                    EndDate = c.EndDate,
+                    LearningOutcomes = c.LearningOutcomes,
+                    CreatedBy = c.CreatedBy,
+                    CreatorName = c.Creator != null ? c.Creator.FullName : string.Empty,
+                    TeacherId = c.TeacherId,
+                    TeacherName = c.Teacher != null ? c.Teacher.FullName : string.Empty,
+                    TeacherAvatarUrl = c.Teacher != null
+                        ? (!string.IsNullOrWhiteSpace(c.Teacher.AvatarUrl)
+                            ? c.Teacher.AvatarUrl
+                            : (c.Teacher.AvatarImage != null ? $"/api/public/users/{c.Teacher.Id}/avatar" : null))
+                        : null,
+                    AvatarUrl = c.AvatarUrl,
+                    LessonCount = c.Lessons.Count,
+                    StudentCount = c.ExpectedStudentCount > 0 ? c.ExpectedStudentCount : c.Enrollments.Count,
+                    AverageProgress = c.Enrollments.Any() ? c.Enrollments.Average(e => e.ProgressPercentage) : 0,
+                    CreatedAt = c.CreatedAt,
+                    UpdatedAt = c.UpdatedAt
+                })
+                .FirstOrDefaultAsync();
         }
 
         public async Task<CourseResponseDto> CreateCourseAsync(CourseDto courseDto, int adminId)
@@ -745,6 +886,7 @@ namespace ElearningAPI.Services
         public async Task<IEnumerable<LessonResponseDto>> GetLessonsByCourseAsync(int courseId)
         {
             return await _context.Lessons
+                .AsNoTracking()
                 .Include(l => l.Creator)
                 .Where(l => l.CourseId == courseId)
                 .Select(l => new LessonResponseDto
@@ -754,8 +896,8 @@ namespace ElearningAPI.Services
                     Title = l.Title,
                     Description = l.Description,
                     VideoUrl = l.VideoUrl ?? string.Empty,
-                    PdfUrl = l.PdfFile != null && l.PdfFile.Length > 0 ? $"/api/public/lessons/{l.Id}/pdf" : l.PdfUrl,
-                    DocumentUrl = l.DocumentFile != null && l.DocumentFile.Length > 0 ? $"/api/public/lessons/{l.Id}/document" : l.DocumentUrl,
+                    PdfUrl = !string.IsNullOrWhiteSpace(l.PdfFileName) || !string.IsNullOrWhiteSpace(l.PdfContentType) ? $"/api/public/lessons/{l.Id}/pdf" : l.PdfUrl,
+                    DocumentUrl = !string.IsNullOrWhiteSpace(l.DocumentFileName) || !string.IsNullOrWhiteSpace(l.DocumentContentType) ? $"/api/public/lessons/{l.Id}/document" : l.DocumentUrl,
                     DocumentName = l.DocumentFileName ?? l.DocumentName,
                     ArVrUrl = l.ArVrUrl,
                     QuizUrl = l.QuizUrl,
@@ -769,29 +911,27 @@ namespace ElearningAPI.Services
 
         public async Task<LessonResponseDto?> GetLessonByIdAsync(int id)
         {
-            var lesson = await _context.Lessons
-                .Include(l => l.Creator)
-                .FirstOrDefaultAsync(l => l.Id == id);
-
-            if (lesson == null) return null;
-
-            return new LessonResponseDto
-            {
-                Id = lesson.Id,
-                CourseId = lesson.CourseId,
-                Title = lesson.Title,
-                Description = lesson.Description,
-                VideoUrl = lesson.VideoUrl ?? string.Empty,
-                PdfUrl = ResolveLessonPdfUrl(lesson),
-                DocumentUrl = ResolveLessonDocumentUrl(lesson),
-                DocumentName = lesson.DocumentFileName ?? lesson.DocumentName,
-                ArVrUrl = lesson.ArVrUrl,
-                QuizUrl = lesson.QuizUrl,
-                CreatedBy = lesson.CreatedBy,
-                CreatorName = lesson.Creator != null ? lesson.Creator.FullName : string.Empty,
-                CreatedAt = lesson.CreatedAt,
-                UpdatedAt = lesson.UpdatedAt
-            };
+            return await _context.Lessons
+                .AsNoTracking()
+                .Where(lesson => lesson.Id == id)
+                .Select(lesson => new LessonResponseDto
+                {
+                    Id = lesson.Id,
+                    CourseId = lesson.CourseId,
+                    Title = lesson.Title,
+                    Description = lesson.Description,
+                    VideoUrl = lesson.VideoUrl ?? string.Empty,
+                    PdfUrl = !string.IsNullOrWhiteSpace(lesson.PdfFileName) || !string.IsNullOrWhiteSpace(lesson.PdfContentType) ? $"/api/public/lessons/{lesson.Id}/pdf" : lesson.PdfUrl,
+                    DocumentUrl = !string.IsNullOrWhiteSpace(lesson.DocumentFileName) || !string.IsNullOrWhiteSpace(lesson.DocumentContentType) ? $"/api/public/lessons/{lesson.Id}/document" : lesson.DocumentUrl,
+                    DocumentName = lesson.DocumentFileName ?? lesson.DocumentName,
+                    ArVrUrl = lesson.ArVrUrl,
+                    QuizUrl = lesson.QuizUrl,
+                    CreatedBy = lesson.CreatedBy,
+                    CreatorName = lesson.Creator != null ? lesson.Creator.FullName : string.Empty,
+                    CreatedAt = lesson.CreatedAt,
+                    UpdatedAt = lesson.UpdatedAt
+                })
+                .FirstOrDefaultAsync();
         }
 
         public async Task<LessonResponseDto?> CreateLessonAsync(LessonDto lessonDto, int adminId)
@@ -986,35 +1126,41 @@ namespace ElearningAPI.Services
         // --- Stats Methods ---
         public async Task<OverviewStatsDto> GetOverviewStatsAsync()
         {
-            var courses = await _context.Courses.ToListAsync();
-            var users = await _context.Users.ToListAsync();
+            var totalUsers = await _context.Users.CountAsync();
+            var activeUsers = await _context.Users.CountAsync(u => u.IsActive);
+            var teacherCount = await _context.Users.CountAsync(u => u.Role == UserRole.TEACHER);
+            var studentCount = await _context.Users.CountAsync(u => u.Role == UserRole.STUDENT);
+            var totalCourses = await _context.Courses.CountAsync();
+            var publishedCourses = await _context.Courses.CountAsync(c => c.Status == "Published");
+            var draftCourses = await _context.Courses.CountAsync(c => c.Status == "Draft");
+            var hiddenCourses = await _context.Courses.CountAsync(c => c.Status == "Hidden");
             
             return new OverviewStatsDto
             {
-                TotalUsers = users.Count,
-                TotalCourses = courses.Count,
+                TotalUsers = totalUsers,
+                TotalCourses = totalCourses,
                 TotalNews = await _context.News.CountAsync(),
                 TotalLessons = await _context.Lessons.CountAsync(),
                 UserStats = new UserManagementStatsDto
                 {
-                    Total = users.Count,
+                    Total = totalUsers,
                     TotalTrend = 15,
-                    Active = users.Count, // Mocking all active for now
+                    Active = activeUsers,
                     ActiveTrend = 8,
-                    Teacher = users.Count(u => u.Role == UserRole.TEACHER),
+                    Teacher = teacherCount,
                     TeacherTrend = 2,
-                    Student = users.Count(u => u.Role == UserRole.STUDENT),
+                    Student = studentCount,
                     StudentTrend = 12
                 },
                 CourseStats = new CourseManagementStatsDto
                 {
-                    Total = courses.Count,
+                    Total = totalCourses,
                     TotalTrend = 12,
-                    Published = courses.Count(c => c.Status == "Published"),
+                    Published = publishedCourses,
                     PublishedTrend = 8,
-                    Draft = courses.Count(c => c.Status == "Draft"),
+                    Draft = draftCourses,
                     DraftTrend = -3,
-                    Hidden = courses.Count(c => c.Status == "Hidden"),
+                    Hidden = hiddenCourses,
                     HiddenTrend = 0
                 }
             };
@@ -1022,12 +1168,10 @@ namespace ElearningAPI.Services
 
         public async Task<IEnumerable<GpaDistributionDto>> GetGpaDistributionAsync()
         {
-            var results = await _context.TestResults.ToListAsync();
-            
-            var excellent = results.Count(r => r.Score >= 8.5m);
-            var good = results.Count(r => r.Score >= 7.0m && r.Score < 8.5m);
-            var average = results.Count(r => r.Score >= 5.0m && r.Score < 7.0m);
-            var poor = results.Count(r => r.Score < 5.0m);
+            var excellent = await _context.TestResults.CountAsync(r => r.Score >= 8.5m);
+            var good = await _context.TestResults.CountAsync(r => r.Score >= 7.0m && r.Score < 8.5m);
+            var average = await _context.TestResults.CountAsync(r => r.Score >= 5.0m && r.Score < 7.0m);
+            var poor = await _context.TestResults.CountAsync(r => r.Score < 5.0m);
 
             return new List<GpaDistributionDto>
             {
@@ -1036,6 +1180,19 @@ namespace ElearningAPI.Services
                 new GpaDistributionDto { Range = "Trung bình (5.0 - 6.9)", Count = average },
                 new GpaDistributionDto { Range = "Yếu (< 5.0)", Count = poor }
             };
+        }
+
+        public async Task<IEnumerable<CourseCompletionDto>> GetCourseCompletionAsync()
+        {
+            return await _context.Courses
+                .Where(c => c.Status == "Published")
+                .Select(c => new CourseCompletionDto
+                {
+                    CourseTitle = c.Title,
+                    Completed = c.Enrollments.Count(e => e.ProgressPercentage >= 80),
+                    Incomplete = c.Enrollments.Count(e => e.ProgressPercentage < 80)
+                })
+                .ToListAsync();
         }
 
         public async Task<IEnumerable<RecentActivityDto>> GetRecentActivitiesAsync(int limit = 5)

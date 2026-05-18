@@ -45,5 +45,6 @@ namespace ElearningAPI.Services
         Task<OverviewStatsDto> GetOverviewStatsAsync();
         Task<IEnumerable<GpaDistributionDto>> GetGpaDistributionAsync();
         Task<IEnumerable<RecentActivityDto>> GetRecentActivitiesAsync(int limit = 5);
+        Task<IEnumerable<CourseCompletionDto>> GetCourseCompletionAsync();
     }
 }

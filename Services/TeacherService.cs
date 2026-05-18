@@ -230,8 +230,8 @@ namespace ElearningAPI.Services
         {
             var courseIds = TeacherCourseIdsQuery(teacherId);
             return await _context.Lessons
+                .AsNoTracking()
                 .Where(l => l.CreatedBy == teacherId || courseIds.Contains(l.CourseId))
-                .Include(l => l.Course)
                 .OrderByDescending(l => l.UpdatedAt)
                 .Select(l => new
                 {
@@ -241,12 +241,12 @@ namespace ElearningAPI.Services
                     l.Title,
                     l.Description,
                     l.VideoUrl,
-                    PdfUrl = l.PdfFile != null && l.PdfFile.Length > 0 ? $"/api/public/lessons/{l.Id}/pdf" : l.PdfUrl,
-                    DocumentUrl = l.DocumentFile != null && l.DocumentFile.Length > 0 ? $"/api/public/lessons/{l.Id}/document" : l.DocumentUrl,
+                    PdfUrl = !string.IsNullOrWhiteSpace(l.PdfFileName) || !string.IsNullOrWhiteSpace(l.PdfContentType) ? $"/api/public/lessons/{l.Id}/pdf" : l.PdfUrl,
+                    DocumentUrl = !string.IsNullOrWhiteSpace(l.DocumentFileName) || !string.IsNullOrWhiteSpace(l.DocumentContentType) ? $"/api/public/lessons/{l.Id}/document" : l.DocumentUrl,
                     DocumentName = l.DocumentFileName ?? l.DocumentName,
-                    LessonPlanUrl = l.LessonPlanFile != null && l.LessonPlanFile.Length > 0 ? $"/api/public/lessons/{l.Id}/lesson-plan" : null,
+                    LessonPlanUrl = !string.IsNullOrWhiteSpace(l.LessonPlanFileName) || !string.IsNullOrWhiteSpace(l.LessonPlanContentType) ? $"/api/public/lessons/{l.Id}/lesson-plan" : null,
                     l.LessonPlanFileName,
-                    SlideUrl = l.SlideFile != null && l.SlideFile.Length > 0 ? $"/api/public/lessons/{l.Id}/slide" : null,
+                    SlideUrl = !string.IsNullOrWhiteSpace(l.SlideFileName) || !string.IsNullOrWhiteSpace(l.SlideContentType) ? $"/api/public/lessons/{l.Id}/slide" : null,
                     l.SlideFileName,
                     l.ArVrUrl,
                     l.QuizUrl,
@@ -617,8 +617,8 @@ namespace ElearningAPI.Services
         {
             var courseIds = TeacherCourseIdsQuery(teacherId);
             return await _context.Lessons
+                .AsNoTracking()
                 .Where(l => l.Id == lessonId && (l.CreatedBy == teacherId || courseIds.Contains(l.CourseId)))
-                .Include(l => l.Course)
                 .Select(l => new
                 {
                     l.Id,
@@ -627,12 +627,12 @@ namespace ElearningAPI.Services
                     l.Title,
                     l.Description,
                     l.VideoUrl,
-                    PdfUrl = l.PdfFile != null && l.PdfFile.Length > 0 ? $"/api/public/lessons/{l.Id}/pdf" : l.PdfUrl,
-                    DocumentUrl = l.DocumentFile != null && l.DocumentFile.Length > 0 ? $"/api/public/lessons/{l.Id}/document" : l.DocumentUrl,
+                    PdfUrl = !string.IsNullOrWhiteSpace(l.PdfFileName) || !string.IsNullOrWhiteSpace(l.PdfContentType) ? $"/api/public/lessons/{l.Id}/pdf" : l.PdfUrl,
+                    DocumentUrl = !string.IsNullOrWhiteSpace(l.DocumentFileName) || !string.IsNullOrWhiteSpace(l.DocumentContentType) ? $"/api/public/lessons/{l.Id}/document" : l.DocumentUrl,
                     DocumentName = l.DocumentFileName ?? l.DocumentName,
-                    LessonPlanUrl = l.LessonPlanFile != null && l.LessonPlanFile.Length > 0 ? $"/api/public/lessons/{l.Id}/lesson-plan" : null,
+                    LessonPlanUrl = !string.IsNullOrWhiteSpace(l.LessonPlanFileName) || !string.IsNullOrWhiteSpace(l.LessonPlanContentType) ? $"/api/public/lessons/{l.Id}/lesson-plan" : null,
                     l.LessonPlanFileName,
-                    SlideUrl = l.SlideFile != null && l.SlideFile.Length > 0 ? $"/api/public/lessons/{l.Id}/slide" : null,
+                    SlideUrl = !string.IsNullOrWhiteSpace(l.SlideFileName) || !string.IsNullOrWhiteSpace(l.SlideContentType) ? $"/api/public/lessons/{l.Id}/slide" : null,
                     l.SlideFileName,
                     l.ArVrUrl,
                     l.QuizUrl,

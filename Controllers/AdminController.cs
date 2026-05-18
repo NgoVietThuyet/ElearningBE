@@ -43,6 +43,13 @@ namespace ElearningAPI.Controllers
             return Ok(data);
         }
 
+        [HttpGet("stats/course-completion")]
+        public async Task<IActionResult> GetCourseCompletion()
+        {
+            var data = await _adminService.GetCourseCompletionAsync();
+            return Ok(data);
+        }
+
         [HttpGet("stats/recent-activity")]
         public async Task<IActionResult> GetRecentActivity()
         {
@@ -105,7 +112,16 @@ namespace ElearningAPI.Controllers
         [HttpDelete("users/delete/{id}")]
         public async Task<IActionResult> DeleteUser(int id)
         {
-            var success = await _adminService.DeleteUserAsync(id);
+            bool success;
+            try
+            {
+                success = await _adminService.DeleteUserAsync(id);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+
             if (!success) return NotFound(new { message = "User not found" });
 
             return Ok(new { message = "User deleted successfully" });

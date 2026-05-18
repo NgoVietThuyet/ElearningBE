@@ -86,9 +86,9 @@ namespace ElearningAPI.Services
                 new Claim(ClaimTypes.Name, user.FullName),
                 new Claim(ClaimTypes.Email, user.Email),
                 new Claim(ClaimTypes.Role, user.Role.ToString()),
-                new Claim("AvatarUrl", (user.AvatarUrl != null && (user.AvatarUrl.StartsWith("http://") || user.AvatarUrl.StartsWith("https://")))
+                new Claim("AvatarUrl", !string.IsNullOrWhiteSpace(user.AvatarUrl)
                     ? user.AvatarUrl
-                    : ""),
+                    : (user.AvatarImage != null ? $"/api/public/users/{user.Id}/avatar" : "")),
             };
 
             var jwtKey = _config["Jwt:Key"];

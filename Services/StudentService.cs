@@ -40,9 +40,7 @@ namespace ElearningAPI.Services
                 .Select(e => e.CourseId);
 
             return await _context.Courses
-                .Include(c => c.Creator)
-                .Include(c => c.Lessons)
-                .Include(c => c.Enrollments)
+                .AsNoTracking()
                 .OrderByDescending(c => c.CreatedAt)
                 .Select(c => new
                 {
@@ -60,9 +58,8 @@ namespace ElearningAPI.Services
         public async Task<IEnumerable<object>> GetMyCourses(int studentId)
         {
             return await _context.Enrollments
+                .AsNoTracking()
                 .Where(e => e.StudentId == studentId)
-                .Include(e => e.Course)
-                .ThenInclude(c => c.Lessons)
                 .Select(e => new
                 {
                     e.Course.Id,
@@ -80,13 +77,14 @@ namespace ElearningAPI.Services
         public async Task<IEnumerable<object>> GetMyLessons(int studentId)
         {
             var enrolledCourseIds = await _context.Enrollments
+                .AsNoTracking()
                 .Where(e => e.StudentId == studentId)
                 .Select(e => e.CourseId)
                 .ToListAsync();
 
             return await _context.Lessons
+                .AsNoTracking()
                 .Where(l => enrolledCourseIds.Contains(l.CourseId))
-                .Include(l => l.Course)
                 .OrderByDescending(l => l.Id)
                 .Select(l => new
                 {
@@ -105,9 +103,32 @@ namespace ElearningAPI.Services
         public async Task<object?> GetLessonDetail(int studentId, int lessonId, bool isAdmin = false)
         {
             var lesson = await _context.Lessons
-                .Include(l => l.Course)
-                .Include(l => l.Tests)
-                .FirstOrDefaultAsync(l => l.Id == lessonId);
+                .AsNoTracking()
+                .Where(l => l.Id == lessonId)
+                .Select(l => new
+                {
+                    l.Id,
+                    l.CourseId,
+                    CourseTitle = l.Course.Title,
+                    l.Title,
+                    l.Description,
+                    l.VideoUrl,
+                    l.PdfUrl,
+                    l.PdfFileName,
+                    l.PdfContentType,
+                    l.DocumentUrl,
+                    l.DocumentName,
+                    l.DocumentFileName,
+                    l.DocumentContentType,
+                    l.SlideFileName,
+                    l.SlideContentType,
+                    l.LessonPlanFileName,
+                    l.LessonPlanContentType,
+                    l.ArVrUrl,
+                    l.QuizUrl,
+                    Tests = l.Tests.Select(t => new { t.Id, t.Title, t.Content }).ToList()
+                })
+                .FirstOrDefaultAsync();
             if (lesson == null) return null;
 
             if (!isAdmin)
@@ -120,16 +141,16 @@ namespace ElearningAPI.Services
             {
                 lesson.Id,
                 lesson.CourseId,
-                CourseTitle = lesson.Course.Title,
+                lesson.CourseTitle,
                 lesson.Title,
                 lesson.Description,
                 lesson.VideoUrl,
-                PdfUrl = lesson.PdfFile != null && lesson.PdfFile.Length > 0 ? $"/api/public/lessons/{lesson.Id}/pdf" : lesson.PdfUrl,
-                DocumentUrl = lesson.DocumentFile != null && lesson.DocumentFile.Length > 0 ? $"/api/public/lessons/{lesson.Id}/document" : lesson.DocumentUrl,
+                PdfUrl = !string.IsNullOrWhiteSpace(lesson.PdfFileName) || !string.IsNullOrWhiteSpace(lesson.PdfContentType) ? $"/api/public/lessons/{lesson.Id}/pdf" : lesson.PdfUrl,
+                DocumentUrl = !string.IsNullOrWhiteSpace(lesson.DocumentFileName) || !string.IsNullOrWhiteSpace(lesson.DocumentContentType) ? $"/api/public/lessons/{lesson.Id}/document" : lesson.DocumentUrl,
                 DocumentName = lesson.DocumentFileName ?? lesson.DocumentName,
-                SlideUrl = lesson.SlideFile != null && lesson.SlideFile.Length > 0 ? $"/api/public/lessons/{lesson.Id}/slide" : null,
+                SlideUrl = !string.IsNullOrWhiteSpace(lesson.SlideFileName) || !string.IsNullOrWhiteSpace(lesson.SlideContentType) ? $"/api/public/lessons/{lesson.Id}/slide" : null,
                 SlideFileName = lesson.SlideFileName,
-                LessonPlanUrl = lesson.LessonPlanFile != null && lesson.LessonPlanFile.Length > 0 ? $"/api/public/lessons/{lesson.Id}/lesson-plan" : null,
+                LessonPlanUrl = !string.IsNullOrWhiteSpace(lesson.LessonPlanFileName) || !string.IsNullOrWhiteSpace(lesson.LessonPlanContentType) ? $"/api/public/lessons/{lesson.Id}/lesson-plan" : null,
                 LessonPlanFileName = lesson.LessonPlanFileName,
                 lesson.ArVrUrl,
                 lesson.QuizUrl,
