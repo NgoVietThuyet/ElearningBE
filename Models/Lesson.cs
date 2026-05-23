@@ -77,5 +77,6 @@ namespace ElearningAPI.Models
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
         public ICollection<Test> Tests { get; set; }
+        public ICollection<LessonProgress> LessonProgresses { get; set; }
     }
 }

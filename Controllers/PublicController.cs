@@ -42,6 +42,39 @@ namespace ElearningAPI.Controllers
             return File(avatar.AvatarImage, avatar.AvatarContentType);
         }
 
+        [HttpGet("test-teacher-stats")]
+        public async Task<IActionResult> TestTeacherStats([FromServices] ITeacherService teacherService)
+        {
+            var teacher = await _context.Users.FirstOrDefaultAsync(u => u.Role == UserRole.TEACHER);
+            if (teacher == null) return NotFound("No teacher found.");
+            
+            try
+            {
+                var stats = await teacherService.GetOverviewStats(teacher.Id);
+                var lessons = await teacherService.GetMyLessons(teacher.Id);
+                var students = await teacherService.GetMyStudents(teacher.Id);
+                var feedbacks = await teacherService.GetMyFeedbacks(teacher.Id);
+                var courses = await teacherService.GetMyCourses(teacher.Id);
+                return Ok(new {
+                    TeacherId = teacher.Id,
+                    TeacherName = teacher.FullName,
+                    Stats = stats,
+                    Lessons = lessons,
+                    Students = students,
+                    Feedbacks = feedbacks,
+                    Courses = courses
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new {
+                    Message = ex.Message,
+                    StackTrace = ex.StackTrace,
+                    InnerException = ex.InnerException?.Message
+                });
+            }
+        }
+
         [HttpGet("courses")]
         public async Task<IActionResult> GetCourses()
         {

@@ -13,5 +13,6 @@ namespace ElearningAPI.Services
         Task<object> EnrollCourse(int studentId, int courseId);
         Task<object?> SubmitTest(int studentId, int testId, IEnumerable<int> answers);
         Task<IEnumerable<object>> GetTestHistory(int studentId);
+        Task<bool> CompleteLesson(int studentId, int lessonId);
     }
 }

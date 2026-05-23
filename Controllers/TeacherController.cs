@@ -189,6 +189,43 @@ namespace ElearningAPI.Controllers
         {
             return Ok(await _teacherService.GetMyFeedbacks(GetUserId()));
         }
+
+        [HttpPost("lessons/{lessonId}/parse-quiz-pdf")]
+        public IActionResult ParseQuizPdf(
+            int lessonId,
+            Microsoft.AspNetCore.Http.IFormFile file,
+            [FromServices] IPdfQuizParserService parserService)
+        {
+            if (file == null || file.Length == 0)
+            {
+                return BadRequest(new { Message = "Vui lòng chọn một tệp PDF để tải lên." });
+            }
+
+            if (!file.ContentType.Equals("application/pdf", StringComparison.OrdinalIgnoreCase) && 
+                !Path.GetExtension(file.FileName).Equals(".pdf", StringComparison.OrdinalIgnoreCase))
+            {
+                return BadRequest(new { Message = "Chỉ chấp nhận tệp định dạng PDF." });
+            }
+
+            try
+            {
+                using var stream = file.OpenReadStream();
+                var result = parserService.ParseQuizFromPdf(stream);
+                return Ok(result);
+            }
+            catch (System.Exception ex)
+            {
+                return BadRequest(new { Message = ex.Message });
+            }
+        }
+
+        [HttpGet("lessons/{lessonId}/quiz-report")]
+        public async Task<IActionResult> GetLessonQuizReport(int lessonId)
+        {
+            var result = await _teacherService.GetLessonQuizReportAsync(GetUserId(), lessonId);
+            if (result == null) return NotFound(new { Message = "Không tìm thấy bài giảng hoặc bạn không có quyền quản lý bài giảng này." });
+            return Ok(result);
+        }
     }
 
     public class UpdateTeacherStudentDto

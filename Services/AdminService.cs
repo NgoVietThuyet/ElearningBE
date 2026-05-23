@@ -711,6 +711,7 @@ namespace ElearningAPI.Services
                     LessonCount = c.Lessons.Count,
                     StudentCount = c.ExpectedStudentCount > 0 ? c.ExpectedStudentCount : c.Enrollments.Count,
                     AverageProgress = c.Enrollments.Any() ? c.Enrollments.Average(e => e.ProgressPercentage) : 0,
+                    SortOrder = c.SortOrder,
                     CreatedAt = c.CreatedAt,
                     UpdatedAt = c.UpdatedAt
                 })
@@ -751,6 +752,7 @@ namespace ElearningAPI.Services
                     LessonCount = c.Lessons.Count,
                     StudentCount = c.ExpectedStudentCount > 0 ? c.ExpectedStudentCount : c.Enrollments.Count,
                     AverageProgress = c.Enrollments.Any() ? c.Enrollments.Average(e => e.ProgressPercentage) : 0,
+                    SortOrder = c.SortOrder,
                     CreatedAt = c.CreatedAt,
                     UpdatedAt = c.UpdatedAt
                 })
@@ -880,6 +882,22 @@ namespace ElearningAPI.Services
                 await transaction.CommitAsync();
                 return true;
             });
+        }
+
+        public async Task<bool> UpdateCourseOrderAsync(List<int> courseIds)
+        {
+            var courses = await _context.Courses.ToListAsync();
+            for (int i = 0; i < courseIds.Count; i++)
+            {
+                var courseId = courseIds[i];
+                var course = courses.FirstOrDefault(c => c.Id == courseId);
+                if (course != null)
+                {
+                    course.SortOrder = i + 1;
+                }
+            }
+            await _context.SaveChangesAsync();
+            return true;
         }
 
         // --- Lesson Methods ---
@@ -1188,6 +1206,7 @@ namespace ElearningAPI.Services
                 .Where(c => c.Status == "Published")
                 .Select(c => new CourseCompletionDto
                 {
+                    CourseId = c.Id,
                     CourseTitle = c.Title,
                     Completed = c.Enrollments.Count(e => e.ProgressPercentage >= 80),
                     Incomplete = c.Enrollments.Count(e => e.ProgressPercentage < 80)
@@ -1229,6 +1248,36 @@ namespace ElearningAPI.Services
                 .OrderByDescending(a => a.Timestamp)
                 .Take(limit)
                 .ToList();
+        }
+
+        public async Task<IEnumerable<MemberGrowthDto>> GetMemberGrowthAsync()
+        {
+            var users = await _context.Users.AsNoTracking().ToListAsync();
+
+            var quarters = new[]
+            {
+                new { Name = "Q1", EndDate = new DateTime(2026, 3, 31, 23, 59, 59, DateTimeKind.Utc) },
+                new { Name = "Q2", EndDate = new DateTime(2026, 6, 30, 23, 59, 59, DateTimeKind.Utc) },
+                new { Name = "Q3", EndDate = new DateTime(2026, 9, 30, 23, 59, 59, DateTimeKind.Utc) },
+                new { Name = "Q4", EndDate = new DateTime(2026, 12, 31, 23, 59, 59, DateTimeKind.Utc) }
+            };
+
+            var list = new List<MemberGrowthDto>();
+            foreach (var q in quarters)
+            {
+                var students = users.Count(u => u.Role == UserRole.STUDENT && u.CreatedAt <= q.EndDate);
+                var teachers = users.Count(u => u.Role == UserRole.TEACHER && u.CreatedAt <= q.EndDate);
+                
+                list.Add(new MemberGrowthDto
+                {
+                    Quarter = q.Name,
+                    Students = students,
+                    Teachers = teachers,
+                    Total = students + teachers
+                });
+            }
+
+            return list;
         }
     }
 }

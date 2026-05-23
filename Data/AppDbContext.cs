@@ -18,6 +18,7 @@ namespace ElearningAPI.Data
         public DbSet<Enrollment> Enrollments { get; set; }
         public DbSet<TestResult> TestResults { get; set; }
         public DbSet<Feedback> Feedbacks { get; set; }
+        public DbSet<LessonProgress> LessonProgresses { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
 {
@@ -95,6 +96,10 @@ namespace ElearningAPI.Data
         .WithMany(f => f.Replies)
         .HasForeignKey(f => f.ParentFeedbackId)
         .OnDelete(DeleteBehavior.Cascade);
+
+    modelBuilder.Entity<LessonProgress>()
+        .HasIndex(lp => new { lp.StudentId, lp.LessonId })
+        .IsUnique();
 }
     }
 }

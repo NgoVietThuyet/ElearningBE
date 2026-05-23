@@ -1,5 +1,6 @@
 using ElearningAPI.Data;
 using ElearningAPI.Models;
+using ElearningAPI.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -13,10 +14,12 @@ namespace ElearningAPI.Controllers
     public class FeedbackController : ControllerBase
     {
         private readonly AppDbContext _context;
+        private readonly ISseConnectionManager _sseManager;
 
-        public FeedbackController(AppDbContext context)
+        public FeedbackController(AppDbContext context, ISseConnectionManager sseManager)
         {
             _context = context;
+            _sseManager = sseManager;
         }
 
         [HttpGet]
@@ -152,6 +155,24 @@ namespace ElearningAPI.Controllers
             _context.Feedbacks.Add(feedback);
             await _context.SaveChangesAsync();
 
+            // SSE: broadcast tới teacher và admin
+            var notifyPayload = new
+            {
+                feedbackId = feedback.Id,
+                courseId = feedback.CourseId,
+                teacherId = feedback.TeacherId,
+                rating = feedback.Rating,
+                content = feedback.Content,
+                authorId = feedback.AuthorId,
+                createdAt = feedback.CreatedAt
+            };
+            _ = Task.Run(async () =>
+            {
+                await _sseManager.BroadcastAsync($"feedback-{feedback.CourseId}", "new-feedback", notifyPayload);
+                await _sseManager.BroadcastAsync($"teacher-{feedback.TeacherId}", "new-feedback", notifyPayload);
+                await _sseManager.BroadcastToAdminAsync("feedback-changed", new { courseId = feedback.CourseId, teacherId = feedback.TeacherId });
+            });
+
             return CreatedAtAction(nameof(GetCourseFeedbackThread), new { courseId = feedback.CourseId }, new { feedback.Id });
         }
 
@@ -182,6 +203,24 @@ namespace ElearningAPI.Controllers
 
             _context.Feedbacks.Add(reply);
             await _context.SaveChangesAsync();
+
+            // SSE: broadcast reply mới
+            var replyPayload = new
+            {
+                feedbackId = reply.Id,
+                parentFeedbackId = reply.ParentFeedbackId,
+                courseId = reply.CourseId,
+                teacherId = reply.TeacherId,
+                content = reply.Content,
+                authorId = reply.AuthorId,
+                createdAt = reply.CreatedAt
+            };
+            _ = Task.Run(async () =>
+            {
+                await _sseManager.BroadcastAsync($"feedback-{reply.CourseId}", "new-reply", replyPayload);
+                await _sseManager.BroadcastAsync($"teacher-{reply.TeacherId}", "new-feedback", replyPayload);
+                await _sseManager.BroadcastToAdminAsync("feedback-changed", new { courseId = reply.CourseId });
+            });
 
             return CreatedAtAction(nameof(GetCourseFeedbackThread), new { courseId = reply.CourseId }, new { reply.Id });
         }

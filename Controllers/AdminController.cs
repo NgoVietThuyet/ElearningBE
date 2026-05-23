@@ -57,6 +57,14 @@ namespace ElearningAPI.Controllers
             return Ok(activities);
         }
 
+        [HttpGet("stats/member-growth")]
+        public async Task<IActionResult> GetMemberGrowth()
+        {
+            var data = await _adminService.GetMemberGrowthAsync();
+            return Ok(data);
+        }
+
+
         // --- User Endpoints ---
         [HttpGet("users/get_all")]
         public async Task<IActionResult> GetAllUsers()
@@ -231,6 +239,14 @@ namespace ElearningAPI.Controllers
             if (!success) return NotFound(new { message = "Course not found" });
 
             return Ok(new { message = "Course deleted successfully" });
+        }
+
+        [HttpPost("courses/order")]
+        public async Task<IActionResult> UpdateCourseOrder([FromBody] List<int> courseIds)
+        {
+            var success = await _adminService.UpdateCourseOrderAsync(courseIds);
+            if (!success) return BadRequest(new { Message = "Không thể cập nhật lộ trình học tập." });
+            return Ok(new { Message = "Cập nhật lộ trình học tập thành công." });
         }
 
         // --- Lesson Endpoints ---

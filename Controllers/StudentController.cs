@@ -12,10 +12,12 @@ namespace ElearningAPI.Controllers
     public class StudentController : ControllerBase
     {
         private readonly IStudentService _studentService;
+        private readonly ISseConnectionManager _sseManager;
 
-        public StudentController(IStudentService studentService)
+        public StudentController(IStudentService studentService, ISseConnectionManager sseManager)
         {
             _studentService = studentService;
+            _sseManager = sseManager;
         }
 
         private int GetUserId() => int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
@@ -59,11 +61,39 @@ namespace ElearningAPI.Controllers
             return Ok(result);
         }
 
+        [HttpPost("lessons/{lessonId}/complete")]
+        public async Task<IActionResult> CompleteLesson(int lessonId)
+        {
+            var userId = GetUserId();
+            var result = await _studentService.CompleteLesson(userId, lessonId);
+            if (!result) return NotFound(new { Message = "Lesson not found or student not enrolled." });
+
+            // SSE: thông báo real-time tiến độ mới
+            _ = Task.Run(async () =>
+            {
+                var progressPayload = new { studentId = userId, lessonId, completedAt = DateTime.UtcNow };
+                await _sseManager.BroadcastAsync($"student-{userId}", "lesson-completed", progressPayload);
+                await _sseManager.BroadcastToAdminAsync("progress-changed", new { studentId = userId, lessonId });
+            });
+
+            return Ok(new { Success = true });
+        }
+
         [HttpPost("tests/{testId}/submit")]
         public async Task<IActionResult> SubmitTest(int testId, [FromBody] SubmitTestDto dto)
         {
-            var result = await _studentService.SubmitTest(GetUserId(), testId, dto.Answers);
+            var userId = GetUserId();
+            var result = await _studentService.SubmitTest(userId, testId, dto.Answers);
             if (result == null) return NotFound(new { Message = "Test not found or student is not enrolled." });
+
+            // SSE: thông báo kết quả bài test
+            _ = Task.Run(async () =>
+            {
+                var testPayload = new { studentId = userId, testId, completedAt = DateTime.UtcNow };
+                await _sseManager.BroadcastAsync($"student-{userId}", "test-submitted", testPayload);
+                await _sseManager.BroadcastToAdminAsync("progress-changed", new { studentId = userId, testId });
+            });
+
             return Ok(result);
         }
 

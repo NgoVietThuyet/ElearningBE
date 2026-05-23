@@ -1,4 +1,4 @@
-﻿using ElearningAPI.Data;
+using ElearningAPI.Data;
 using ElearningAPI.Models;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
@@ -29,7 +29,7 @@ namespace ElearningAPI.Services
                 CompletedTests = await _context.TestResults.CountAsync(r => r.StudentId == studentId),
                 AverageScore = Math.Round(await _context.TestResults
                     .Where(r => r.StudentId == studentId)
-                    .AverageAsync(r => (double?)r.Score) ?? 0, 1)
+                    .AverageAsync(r => (decimal?)r.Score) ?? 0m, 1)
             };
         }
 
@@ -57,7 +57,7 @@ namespace ElearningAPI.Services
 
         public async Task<IEnumerable<object>> GetMyCourses(int studentId)
         {
-            return await _context.Enrollments
+            var enrollments = await _context.Enrollments
                 .AsNoTracking()
                 .Where(e => e.StudentId == studentId)
                 .Select(e => new
@@ -65,13 +65,41 @@ namespace ElearningAPI.Services
                     e.Course.Id,
                     e.Course.Title,
                     e.Course.Description,
-                    Progress = (int)Math.Round(e.ProgressPercentage),
+                    ProgressPercentage = e.ProgressPercentage,
                     TotalLessons = e.Course.Lessons.Count,
-                    CompletedLessons = (int)Math.Round((double)e.ProgressPercentage / 100 * e.Course.Lessons.Count),
+                    SortOrder = e.Course.SortOrder,
                     e.EnrolledAt,
                     e.LastAccessed
                 })
                 .ToListAsync();
+
+            var courseIds = enrollments.Select(e => e.Id).ToList();
+            var lessonProgresses = await _context.LessonProgresses
+                .AsNoTracking()
+                .Where(lp => lp.StudentId == studentId && courseIds.Contains(lp.CourseId) && lp.IsCompleted)
+                .GroupBy(lp => lp.CourseId)
+                .Select(g => new { CourseId = g.Key, Count = g.Count() })
+                .ToListAsync();
+
+            var progressMap = lessonProgresses.ToDictionary(p => p.CourseId, p => p.Count);
+
+            return enrollments.Select(e =>
+            {
+                var completedCount = progressMap.GetValueOrDefault(e.Id, 0);
+                var dynamicProgress = e.TotalLessons > 0 ? (int)Math.Round((double)completedCount / e.TotalLessons * 100) : 0;
+                return new
+                {
+                    e.Id,
+                    e.Title,
+                    e.Description,
+                    Progress = dynamicProgress,
+                    e.TotalLessons,
+                    CompletedLessons = completedCount,
+                    SortOrder = e.SortOrder,
+                    e.EnrolledAt,
+                    e.LastAccessed
+                };
+            }).ToList();
         }
 
         public async Task<IEnumerable<object>> GetMyLessons(int studentId)
@@ -159,7 +187,13 @@ namespace ElearningAPI.Services
                     .Select(t => new { t.Id, t.Title, Cards = ReadJsonProperty(t.Content, "cards") }),
                 Tests = lesson.Tests
                     .Where(t => IsContentType(t.Content, "quiz"))
-                    .Select(t => new { t.Id, t.Title, Questions = ReadJsonProperty(t.Content, "questions") }),
+                    .Select(t => new { 
+                        t.Id, 
+                        t.Title, 
+                        Questions = ReadJsonProperty(t.Content, "questions"),
+                        DurationMinutes = ReadJsonIntProperty(t.Content, "durationMinutes"),
+                        EndTime = ReadJsonStringProperty(t.Content, "endTime")
+                    }),
                 Exercises = lesson.Tests
                     .Where(t => IsContentType(t.Content, "exam"))
                     .Select(t => new { t.Id, t.Title, Questions = ReadJsonProperty(t.Content, "questions") })
@@ -215,14 +249,10 @@ namespace ElearningAPI.Services
             };
             _context.TestResults.Add(result);
 
-            var enrollment = await _context.Enrollments.FirstOrDefaultAsync(e => e.StudentId == studentId && e.CourseId == test.Lesson.CourseId);
-            if (enrollment != null)
-            {
-                enrollment.LastAccessed = DateTime.UtcNow;
-                enrollment.ProgressPercentage = Math.Max(enrollment.ProgressPercentage, 100);
-            }
-
             await _context.SaveChangesAsync();
+
+            // Mark the lesson as completed (progress recalculated inside CompleteLesson)
+            await CompleteLesson(studentId, test.LessonId);
 
             return new
             {
@@ -256,6 +286,56 @@ namespace ElearningAPI.Services
                     r.CompletedAt
                 })
                 .ToListAsync();
+        }
+
+        public async Task<bool> CompleteLesson(int studentId, int lessonId)
+        {
+            var lesson = await _context.Lessons
+                .AsNoTracking()
+                .FirstOrDefaultAsync(l => l.Id == lessonId);
+            if (lesson == null) return false;
+
+            var existing = await _context.LessonProgresses
+                .FirstOrDefaultAsync(lp => lp.StudentId == studentId && lp.LessonId == lessonId);
+
+            if (existing == null)
+            {
+                _context.LessonProgresses.Add(new LessonProgress
+                {
+                    StudentId = studentId,
+                    LessonId = lessonId,
+                    CourseId = lesson.CourseId,
+                    IsCompleted = true,
+                    CompletedAt = DateTime.UtcNow
+                });
+                await _context.SaveChangesAsync();
+            }
+            else if (!existing.IsCompleted)
+            {
+                existing.IsCompleted = true;
+                existing.CompletedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+            }
+
+            var totalLessons = await _context.Lessons.CountAsync(l => l.CourseId == lesson.CourseId);
+            var completedCount = await _context.LessonProgresses
+                .CountAsync(lp => lp.StudentId == studentId && lp.CourseId == lesson.CourseId && lp.IsCompleted);
+
+            var enrollment = await _context.Enrollments
+                .FirstOrDefaultAsync(e => e.StudentId == studentId && e.CourseId == lesson.CourseId);
+
+            if (enrollment != null)
+            {
+                enrollment.LastAccessed = DateTime.UtcNow;
+                if (totalLessons > 0)
+                {
+                    var newProgress = (int)Math.Round((double)completedCount / totalLessons * 100);
+                    enrollment.ProgressPercentage = Math.Max(enrollment.ProgressPercentage, newProgress);
+                }
+                await _context.SaveChangesAsync();
+            }
+
+            return true;
         }
 
         private static bool IsContentType(string content, string type)
@@ -293,7 +373,7 @@ namespace ElearningAPI.Services
                 if (!doc.RootElement.TryGetProperty("questions", out var questions)) return new List<int>();
 
                 return questions.EnumerateArray()
-                    .Select(q => q.TryGetProperty("correctIndex", out var correct) ? correct.GetInt32() : -1)
+                    .Select(q => q.TryGetProperty("correctIndex", out var correct) ? correct.GetInt32() : (q.TryGetProperty("answer", out var ans) ? ans.GetInt32() : -1))
                     .ToList();
             }
             catch
@@ -301,6 +381,33 @@ namespace ElearningAPI.Services
                 return new List<int>();
             }
         }
+
+        private static int ReadJsonIntProperty(string content, string propertyName)
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(content);
+                if (!doc.RootElement.TryGetProperty(propertyName, out var value)) return 0;
+                return value.GetInt32();
+            }
+            catch
+            {
+                return 0;
+            }
+        }
+
+        private static string ReadJsonStringProperty(string content, string propertyName)
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(content);
+                if (!doc.RootElement.TryGetProperty(propertyName, out var value)) return string.Empty;
+                return value.GetString() ?? string.Empty;
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }
     }
 }
-

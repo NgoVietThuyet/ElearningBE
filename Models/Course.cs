@@ -54,6 +54,8 @@ namespace ElearningAPI.Models
         
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+        
+        public int SortOrder { get; set; } = 0;
 
         public ICollection<Lesson> Lessons { get; set; } = new List<Lesson>();
         public ICollection<Enrollment> Enrollments { get; set; } = new List<Enrollment>();

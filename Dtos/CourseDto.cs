@@ -51,6 +51,7 @@ namespace ElearningAPI.Dtos
         public int LessonCount { get; set; }
         public int StudentCount { get; set; }
         public decimal AverageProgress { get; set; }
+        public int SortOrder { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
     }

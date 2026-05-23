@@ -27,5 +27,6 @@ namespace ElearningAPI.Services
         Task<object> GetReport(int teacherId);
         Task<bool> EnrollStudentInCourseAsync(int teacherId, int courseId, string studentEmail);
         Task<IEnumerable<object>> GetAllStudentsAsync();
+        Task<object?> GetLessonQuizReportAsync(int teacherId, int lessonId);
     }
 }

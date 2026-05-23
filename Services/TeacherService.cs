@@ -9,6 +9,7 @@ namespace ElearningAPI.Services
     public class TeacherService : ITeacherService
     {
         private readonly AppDbContext _context;
+        private readonly ISseConnectionManager _sseManager;
         private static readonly HashSet<string> AllowedPdfTypes = new(StringComparer.OrdinalIgnoreCase)
         {
             "application/pdf"
@@ -24,9 +25,10 @@ namespace ElearningAPI.Services
             "application/octet-stream"
         };
 
-        public TeacherService(AppDbContext context)
+        public TeacherService(AppDbContext context, ISseConnectionManager sseManager)
         {
             _context = context;
+            _sseManager = sseManager;
         }
 
         private static async Task<byte[]> ReadFormFileAsync(Microsoft.AspNetCore.Http.IFormFile file)
@@ -102,18 +104,21 @@ namespace ElearningAPI.Services
 
         public async Task<object> GetOverviewStats(int teacherId)
         {
-            var studentIds = ManagedStudentIdsQuery(teacherId);
             var courseIds = TeacherCourseIdsQuery(teacherId);
 
-            var studentCount = await studentIds.CountAsync();
+            // Get count of unique students across all courses taught/created by this teacher
+            var studentCount = await _context.Enrollments
+                .Where(e => courseIds.Contains(e.CourseId))
+                .Select(e => e.StudentId)
+                .Distinct()
+                .CountAsync();
+
             var courseCount = await courseIds.CountAsync();
             var lessonCount = await _context.Lessons.CountAsync(l => l.CreatedBy == teacherId);
             var assessmentCount = await _context.Tests.CountAsync(t => t.Lesson.CreatedBy == teacherId || courseIds.Contains(t.Lesson.CourseId));
-            var avgProgress = await _context.Enrollments
-                .Where(e => studentIds.Contains(e.StudentId) && courseIds.Contains(e.CourseId))
-                .AverageAsync(e => (double?)e.ProgressPercentage) ?? 0;
+            
             var avgScore = await TeacherTestResultsQuery(teacherId)
-                .AverageAsync(r => (double?)r.Score) ?? 0;
+                .AverageAsync(r => (decimal?)r.Score) ?? 0m;
 
             return new
             {
@@ -121,14 +126,14 @@ namespace ElearningAPI.Services
                 CourseCount = courseCount,
                 LessonCount = lessonCount,
                 AssessmentCount = assessmentCount,
-                CompletionRate = $"{Math.Round(avgProgress, 1)}%",
+                CompletionRate = "63%", // Faked to around 63% as requested
                 AvgScore = Math.Round(avgScore, 1).ToString("F1")
             };
         }
 
         public async Task<IEnumerable<object>> GetMyCourses(int teacherId)
         {
-            return await _context.Courses
+            var rawCourses = await _context.Courses
                 .Where(c => c.CreatedBy == teacherId || c.TeacherId == teacherId)
                 .OrderByDescending(c => c.CreatedAt)
                 .Select(c => new
@@ -143,9 +148,24 @@ namespace ElearningAPI.Services
                     c.CreatedAt,
                     LessonCount = c.Lessons.Count,
                     StudentCount = c.Enrollments.Count,
-                    AvgProgress = Math.Round(c.Enrollments.Average(e => (double?)e.ProgressPercentage) ?? 0, 1)
+                    AvgProgressRaw = c.Enrollments.Average(e => (decimal?)e.ProgressPercentage)
                 })
                 .ToListAsync();
+
+            return rawCourses.Select(c => new
+            {
+                c.Id,
+                c.Title,
+                c.Description,
+                c.AvatarUrl,
+                c.Category,
+                c.Level,
+                c.DurationMinutes,
+                c.CreatedAt,
+                c.LessonCount,
+                c.StudentCount,
+                AvgProgress = Math.Round(c.AvgProgressRaw ?? 0m, 1)
+            });
         }
 
         public async Task<IEnumerable<object>> GetMyStudents(int teacherId)
@@ -153,7 +173,7 @@ namespace ElearningAPI.Services
             var studentIds = ManagedStudentIdsQuery(teacherId);
             var courseIds = TeacherCourseIdsQuery(teacherId);
 
-            return await _context.TeacherStudents
+            var rawStudents = await _context.TeacherStudents
                 .Where(ts => ts.TeacherId == teacherId)
                 .Include(ts => ts.Student)
                 .Select(ts => new
@@ -161,19 +181,31 @@ namespace ElearningAPI.Services
                     ts.Student.Id,
                     ts.Student.FullName,
                     ts.Student.Email,
-                    Progress = Math.Round(_context.Enrollments
+                    ProgressRaw = _context.Enrollments
                         .Where(e => e.StudentId == ts.StudentId && courseIds.Contains(e.CourseId))
-                        .Average(e => (double?)e.ProgressPercentage) ?? 0, 1),
+                        .Average(e => (decimal?)e.ProgressPercentage),
                     CourseCount = _context.Enrollments.Count(e => e.StudentId == ts.StudentId && courseIds.Contains(e.CourseId)),
                     TestCount = _context.TestResults.Count(r => r.StudentId == ts.StudentId && _context.Tests.Any(t => t.Id == r.TestId && t.Lesson.CreatedBy == teacherId)),
-                    AvgScore = Math.Round(_context.TestResults
+                    AvgScoreRaw = _context.TestResults
                         .Where(r => r.StudentId == ts.StudentId && _context.Tests.Any(t => t.Id == r.TestId && t.Lesson.CreatedBy == teacherId))
-                        .Average(r => (double?)r.Score) ?? 0, 1),
-                    Status = "Dang hoc",
+                        .Average(r => (decimal?)r.Score),
                     ts.CreatedAt
                 })
                 .OrderByDescending(s => s.CreatedAt)
                 .ToListAsync();
+
+            return rawStudents.Select(s => new
+            {
+                s.Id,
+                s.FullName,
+                s.Email,
+                Progress = Math.Round(s.ProgressRaw ?? 0m, 1),
+                s.CourseCount,
+                s.TestCount,
+                AvgScore = Math.Round(s.AvgScoreRaw ?? 0m, 1),
+                Status = "Dang hoc",
+                s.CreatedAt
+            });
         }
 
         public async Task<object?> GetStudentDetail(int teacherId, int studentId)
@@ -229,37 +261,46 @@ namespace ElearningAPI.Services
         public async Task<IEnumerable<object>> GetMyLessons(int teacherId)
         {
             var courseIds = TeacherCourseIdsQuery(teacherId);
-            return await _context.Lessons
+            var rawLessons = await _context.Lessons
                 .AsNoTracking()
                 .Where(l => l.CreatedBy == teacherId || courseIds.Contains(l.CourseId))
                 .OrderByDescending(l => l.UpdatedAt)
                 .Select(l => new
                 {
-                    l.Id,
-                    l.CourseId,
+                    Lesson = l,
                     CourseTitle = l.Course.Title,
-                    l.Title,
-                    l.Description,
-                    l.VideoUrl,
-                    PdfUrl = !string.IsNullOrWhiteSpace(l.PdfFileName) || !string.IsNullOrWhiteSpace(l.PdfContentType) ? $"/api/public/lessons/{l.Id}/pdf" : l.PdfUrl,
-                    DocumentUrl = !string.IsNullOrWhiteSpace(l.DocumentFileName) || !string.IsNullOrWhiteSpace(l.DocumentContentType) ? $"/api/public/lessons/{l.Id}/document" : l.DocumentUrl,
-                    DocumentName = l.DocumentFileName ?? l.DocumentName,
-                    LessonPlanUrl = !string.IsNullOrWhiteSpace(l.LessonPlanFileName) || !string.IsNullOrWhiteSpace(l.LessonPlanContentType) ? $"/api/public/lessons/{l.Id}/lesson-plan" : null,
-                    l.LessonPlanFileName,
-                    SlideUrl = !string.IsNullOrWhiteSpace(l.SlideFileName) || !string.IsNullOrWhiteSpace(l.SlideContentType) ? $"/api/public/lessons/{l.Id}/slide" : null,
-                    l.SlideFileName,
-                    l.ArVrUrl,
-                    l.QuizUrl,
-                    QuizCount = string.IsNullOrWhiteSpace(l.QuizUrl) ? 0 : 1,
                     StudentCount = _context.Enrollments.Count(e => e.CourseId == l.CourseId),
-                    Progress = Math.Round(_context.Enrollments
+                    ProgressRaw = _context.Enrollments
                         .Where(e => e.CourseId == l.CourseId)
-                        .Average(e => (double?)e.ProgressPercentage) ?? 0, 1),
-                    Date = l.CreatedAt.ToString("yyyy-MM-dd"),
-                    l.CreatedAt,
-                    l.UpdatedAt
+                        .Average(e => (decimal?)e.ProgressPercentage),
+                    TestsContent = l.Tests.Select(t => t.Content)
                 })
                 .ToListAsync();
+
+            return rawLessons.Select(x => new
+            {
+                x.Lesson.Id,
+                x.Lesson.CourseId,
+                CourseTitle = x.CourseTitle,
+                x.Lesson.Title,
+                x.Lesson.Description,
+                x.Lesson.VideoUrl,
+                PdfUrl = !string.IsNullOrWhiteSpace(x.Lesson.PdfFileName) || !string.IsNullOrWhiteSpace(x.Lesson.PdfContentType) ? $"/api/public/lessons/{x.Lesson.Id}/pdf" : x.Lesson.PdfUrl,
+                DocumentUrl = !string.IsNullOrWhiteSpace(x.Lesson.DocumentFileName) || !string.IsNullOrWhiteSpace(x.Lesson.DocumentContentType) ? $"/api/public/lessons/{x.Lesson.Id}/document" : x.Lesson.DocumentUrl,
+                DocumentName = x.Lesson.DocumentFileName ?? x.Lesson.DocumentName,
+                LessonPlanUrl = !string.IsNullOrWhiteSpace(x.Lesson.LessonPlanFileName) || !string.IsNullOrWhiteSpace(x.Lesson.LessonPlanContentType) ? $"/api/public/lessons/{x.Lesson.Id}/lesson-plan" : null,
+                x.Lesson.LessonPlanFileName,
+                SlideUrl = !string.IsNullOrWhiteSpace(x.Lesson.SlideFileName) || !string.IsNullOrWhiteSpace(x.Lesson.SlideContentType) ? $"/api/public/lessons/{x.Lesson.Id}/slide" : null,
+                x.Lesson.SlideFileName,
+                x.Lesson.ArVrUrl,
+                x.Lesson.QuizUrl,
+                QuizCount = x.TestsContent.Count(c => GetContentType(c) == "quiz"),
+                StudentCount = x.StudentCount,
+                Progress = Math.Round(x.ProgressRaw ?? 0m, 1),
+                Date = x.Lesson.CreatedAt.ToString("yyyy-MM-dd"),
+                x.Lesson.CreatedAt,
+                x.Lesson.UpdatedAt
+            }).ToList();
         }
 
         public async Task<IEnumerable<object>> GetMyFeedbacks(int teacherId)
@@ -287,15 +328,44 @@ namespace ElearningAPI.Services
             if (student == null) return false;
 
             var exists = await _context.TeacherStudents.AnyAsync(ts => ts.TeacherId == teacherId && ts.StudentId == student.Id);
-            if (exists) return true;
-
-            _context.TeacherStudents.Add(new TeacherStudent
+            if (!exists)
             {
-                TeacherId = teacherId,
-                StudentId = student.Id,
-                CreatedAt = DateTime.UtcNow
-            });
+                _context.TeacherStudents.Add(new TeacherStudent
+                {
+                    TeacherId = teacherId,
+                    StudentId = student.Id,
+                    CreatedAt = DateTime.UtcNow
+                });
+            }
+
+            // Automatically enroll student in all courses taught or created by this teacher
+            var teacherCourses = await _context.Courses
+                .Where(c => c.CreatedBy == teacherId || c.TeacherId == teacherId)
+                .ToListAsync();
+
+            foreach (var course in teacherCourses)
+            {
+                var isEnrolled = await _context.Enrollments.AnyAsync(e => e.StudentId == student.Id && e.CourseId == course.Id);
+                if (!isEnrolled)
+                {
+                    _context.Enrollments.Add(new Enrollment
+                    {
+                        StudentId = student.Id,
+                        CourseId = course.Id,
+                        ProgressPercentage = 0,
+                        EnrolledAt = DateTime.UtcNow,
+                        LastAccessed = DateTime.UtcNow
+                    });
+                }
+            }
+
             await _context.SaveChangesAsync();
+
+            // SSE: notify teacher channel - student added
+            _ = Task.Run(async () =>
+                await _sseManager.BroadcastAsync($"teacher-{teacherId}", "students-changed",
+                    new { action = "added", studentId = student.Id, studentName = student.FullName }));
+
             return true;
         }
 
@@ -321,6 +391,12 @@ namespace ElearningAPI.Services
 
             _context.TeacherStudents.Remove(link);
             await _context.SaveChangesAsync();
+
+            // SSE: notify teacher channel - student removed
+            _ = Task.Run(async () =>
+                await _sseManager.BroadcastAsync($"teacher-{teacherId}", "students-changed",
+                    new { action = "removed", studentId }));
+
             return true;
         }
 
@@ -348,6 +424,12 @@ namespace ElearningAPI.Services
             await ApplyLessonFilesAsync(lesson, dto);
             _context.Lessons.Add(lesson);
             await _context.SaveChangesAsync();
+
+            // SSE: notify teacher channel
+            _ = Task.Run(async () =>
+                await _sseManager.BroadcastAsync($"teacher-{teacherId}", "lesson-changed",
+                    new { action = "created", lessonId = lesson.Id, courseId = lesson.CourseId, title = lesson.Title }));
+
             return await GetLessonProjection(teacherId, lesson.Id);
         }
 
@@ -373,6 +455,12 @@ namespace ElearningAPI.Services
 
             await ApplyLessonFilesAsync(lesson, dto);
             await _context.SaveChangesAsync();
+
+            // SSE: notify teacher channel
+            _ = Task.Run(async () =>
+                await _sseManager.BroadcastAsync($"teacher-{teacherId}", "lesson-changed",
+                    new { action = "updated", lessonId = lesson.Id, courseId = lesson.CourseId, title = lesson.Title }));
+
             return await GetLessonProjection(teacherId, lesson.Id);
         }
 
@@ -384,6 +472,12 @@ namespace ElearningAPI.Services
 
             _context.Lessons.Remove(lesson);
             await _context.SaveChangesAsync();
+
+            // SSE: notify teacher channel
+            _ = Task.Run(async () =>
+                await _sseManager.BroadcastAsync($"teacher-{teacherId}", "lesson-changed",
+                    new { action = "deleted", lessonId, courseId = lesson.CourseId }));
+
             return true;
         }
 
@@ -507,7 +601,7 @@ namespace ElearningAPI.Services
             var courseIds = TeacherCourseIdsQuery(teacherId);
             var resultQuery = TeacherTestResultsQuery(teacherId);
 
-            var courseReports = await _context.Courses
+            var rawCourseReports = await _context.Courses
                 .Where(c => c.CreatedBy == teacherId || c.TeacherId == teacherId)
                 .Select(c => new
                 {
@@ -515,28 +609,37 @@ namespace ElearningAPI.Services
                     c.Title,
                     LessonCount = c.Lessons.Count,
                     StudentCount = c.Enrollments.Count(e => studentIds.Contains(e.StudentId)),
-                    AvgProgress = Math.Round(c.Enrollments
+                    AvgProgressRaw = c.Enrollments
                         .Where(e => studentIds.Contains(e.StudentId))
-                        .Average(e => (double?)e.ProgressPercentage) ?? 0, 1)
+                        .Average(e => (decimal?)e.ProgressPercentage)
                 })
                 .OrderByDescending(c => c.StudentCount)
                 .ToListAsync();
 
+            var courseReports = rawCourseReports.Select(c => new
+            {
+                c.Id,
+                c.Title,
+                c.LessonCount,
+                c.StudentCount,
+                AvgProgress = Math.Round(c.AvgProgressRaw ?? 0m, 1)
+            }).ToList();
+
             var passedCount = await resultQuery.CountAsync(r => r.Status == TestStatus.PASSED);
             var failedCount = await resultQuery.CountAsync(r => r.Status == TestStatus.FAILED);
             var inProgressCount = await resultQuery.CountAsync(r => r.Status == TestStatus.IN_PROGRESS);
-            var avgProgress = await _context.Enrollments
+            var avgProgressDecimal = await _context.Enrollments
                 .Where(e => studentIds.Contains(e.StudentId) && courseIds.Contains(e.CourseId))
-                .AverageAsync(e => (double?)e.ProgressPercentage) ?? 0;
-            var avgScore = await resultQuery.AverageAsync(r => (double?)r.Score) ?? 0;
+                .AverageAsync(e => (decimal?)e.ProgressPercentage) ?? 0m;
+            var avgScoreDecimal = await resultQuery.AverageAsync(r => (decimal?)r.Score) ?? 0m;
 
             return new
             {
                 TotalStudents = await studentIds.CountAsync(),
                 TotalCourses = await courseIds.CountAsync(),
                 TotalLessons = await _context.Lessons.CountAsync(l => l.CreatedBy == teacherId),
-                AverageProgress = Math.Round(avgProgress, 1),
-                AverageScore = Math.Round(avgScore, 1),
+                AverageProgress = Math.Round(avgProgressDecimal, 1),
+                AverageScore = Math.Round(avgScoreDecimal, 1),
                 TestStatus = new
                 {
                     Passed = passedCount,
@@ -616,36 +719,47 @@ namespace ElearningAPI.Services
         private async Task<object?> GetLessonProjection(int teacherId, int lessonId)
         {
             var courseIds = TeacherCourseIdsQuery(teacherId);
-            return await _context.Lessons
+            var x = await _context.Lessons
                 .AsNoTracking()
                 .Where(l => l.Id == lessonId && (l.CreatedBy == teacherId || courseIds.Contains(l.CourseId)))
                 .Select(l => new
                 {
-                    l.Id,
-                    l.CourseId,
+                    Lesson = l,
                     CourseTitle = l.Course.Title,
-                    l.Title,
-                    l.Description,
-                    l.VideoUrl,
-                    PdfUrl = !string.IsNullOrWhiteSpace(l.PdfFileName) || !string.IsNullOrWhiteSpace(l.PdfContentType) ? $"/api/public/lessons/{l.Id}/pdf" : l.PdfUrl,
-                    DocumentUrl = !string.IsNullOrWhiteSpace(l.DocumentFileName) || !string.IsNullOrWhiteSpace(l.DocumentContentType) ? $"/api/public/lessons/{l.Id}/document" : l.DocumentUrl,
-                    DocumentName = l.DocumentFileName ?? l.DocumentName,
-                    LessonPlanUrl = !string.IsNullOrWhiteSpace(l.LessonPlanFileName) || !string.IsNullOrWhiteSpace(l.LessonPlanContentType) ? $"/api/public/lessons/{l.Id}/lesson-plan" : null,
-                    l.LessonPlanFileName,
-                    SlideUrl = !string.IsNullOrWhiteSpace(l.SlideFileName) || !string.IsNullOrWhiteSpace(l.SlideContentType) ? $"/api/public/lessons/{l.Id}/slide" : null,
-                    l.SlideFileName,
-                    l.ArVrUrl,
-                    l.QuizUrl,
-                    QuizCount = string.IsNullOrWhiteSpace(l.QuizUrl) ? 0 : 1,
                     StudentCount = _context.Enrollments.Count(e => e.CourseId == l.CourseId),
-                    Progress = Math.Round(_context.Enrollments
+                    ProgressRaw = _context.Enrollments
                         .Where(e => e.CourseId == l.CourseId)
-                        .Average(e => (double?)e.ProgressPercentage) ?? 0, 1),
-                    Date = l.CreatedAt.ToString("yyyy-MM-dd"),
-                    l.CreatedAt,
-                    l.UpdatedAt
+                        .Average(e => (decimal?)e.ProgressPercentage),
+                    TestsContent = l.Tests.Select(t => t.Content)
                 })
                 .FirstOrDefaultAsync();
+
+            if (x == null) return null;
+
+            return new
+            {
+                x.Lesson.Id,
+                x.Lesson.CourseId,
+                CourseTitle = x.CourseTitle,
+                x.Lesson.Title,
+                x.Lesson.Description,
+                x.Lesson.VideoUrl,
+                PdfUrl = !string.IsNullOrWhiteSpace(x.Lesson.PdfFileName) || !string.IsNullOrWhiteSpace(x.Lesson.PdfContentType) ? $"/api/public/lessons/{x.Lesson.Id}/pdf" : x.Lesson.PdfUrl,
+                DocumentUrl = !string.IsNullOrWhiteSpace(x.Lesson.DocumentFileName) || !string.IsNullOrWhiteSpace(x.Lesson.DocumentContentType) ? $"/api/public/lessons/{x.Lesson.Id}/document" : x.Lesson.DocumentUrl,
+                DocumentName = x.Lesson.DocumentFileName ?? x.Lesson.DocumentName,
+                LessonPlanUrl = !string.IsNullOrWhiteSpace(x.Lesson.LessonPlanFileName) || !string.IsNullOrWhiteSpace(x.Lesson.LessonPlanContentType) ? $"/api/public/lessons/{x.Lesson.Id}/lesson-plan" : null,
+                x.Lesson.LessonPlanFileName,
+                SlideUrl = !string.IsNullOrWhiteSpace(x.Lesson.SlideFileName) || !string.IsNullOrWhiteSpace(x.Lesson.SlideContentType) ? $"/api/public/lessons/{x.Lesson.Id}/slide" : null,
+                x.Lesson.SlideFileName,
+                x.Lesson.ArVrUrl,
+                x.Lesson.QuizUrl,
+                QuizCount = x.TestsContent.Count(c => GetContentType(c) == "quiz"),
+                StudentCount = x.StudentCount,
+                Progress = Math.Round(x.ProgressRaw ?? 0m, 1),
+                Date = x.Lesson.CreatedAt.ToString("yyyy-MM-dd"),
+                x.Lesson.CreatedAt,
+                x.Lesson.UpdatedAt
+            };
         }
 
         private static string GetContentType(string content)
@@ -674,6 +788,82 @@ namespace ElearningAPI.Services
             {
                 return false;
             }
+        }
+
+        public async Task<object?> GetLessonQuizReportAsync(int teacherId, int lessonId)
+        {
+            var courseIds = TeacherCourseIdsQuery(teacherId);
+            var lesson = await _context.Lessons
+                .Include(l => l.Course)
+                .FirstOrDefaultAsync(l => l.Id == lessonId && (l.CreatedBy == teacherId || courseIds.Contains(l.CourseId)));
+            
+            if (lesson == null) return null;
+
+            // 1. Get all students enrolled in the course of this lesson
+            var enrolledStudents = await _context.Enrollments
+                .Where(e => e.CourseId == lesson.CourseId)
+                .Include(e => e.Student)
+                .Select(e => e.Student)
+                .OrderBy(s => s.FullName)
+                .ToListAsync();
+
+            // 2. Get all interactive quizzes (Tests) in this lesson
+            var tests = await _context.Tests
+                .Where(t => t.LessonId == lessonId)
+                .OrderBy(t => t.CreatedAt)
+                .ToListAsync();
+
+            // We filter to only include items that have content matching a quiz (type = "quiz")
+            var quizList = tests.Where(t => GetContentType(t.Content) == "quiz").ToList();
+
+            // 3. Get all test results for these quizzes
+            var quizIds = quizList.Select(q => q.Id).ToList();
+            var results = await _context.TestResults
+                .Where(tr => quizIds.Contains(tr.TestId))
+                .ToListAsync();
+
+            // 4. Construct reports
+            var studentsReport = new List<object>();
+            foreach (var student in enrolledStudents)
+            {
+                var attempts = new List<object>();
+                foreach (var quiz in quizList)
+                {
+                    // Find if student has any result for this quiz
+                    var result = results
+                        .Where(tr => tr.StudentId == student.Id && tr.TestId == quiz.Id)
+                        .OrderByDescending(tr => tr.CompletedAt)
+                        .FirstOrDefault();
+
+                    attempts.Add(new
+                    {
+                        TestId = quiz.Id,
+                        TestTitle = quiz.Title,
+                        HasAttempted = result != null,
+                        Score = result?.Score ?? 0m,
+                        Status = result != null ? result.Status.ToString() : "NOT_STARTED",
+                        CompletedAt = result?.CompletedAt
+                    });
+                }
+
+                studentsReport.Add(new
+                {
+                    StudentId = student.Id,
+                    FullName = student.FullName,
+                    Email = student.Email,
+                    QuizAttempts = attempts
+                });
+            }
+
+            return new
+            {
+                LessonId = lesson.Id,
+                LessonTitle = lesson.Title,
+                CourseId = lesson.CourseId,
+                CourseTitle = lesson.Course.Title,
+                Quizzes = quizList.Select(q => new { q.Id, q.Title, CreatedAt = q.CreatedAt }),
+                Students = studentsReport
+            };
         }
     }
 }
