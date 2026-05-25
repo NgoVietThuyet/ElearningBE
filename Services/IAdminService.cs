@@ -24,6 +24,8 @@ namespace ElearningAPI.Services
         Task<CourseResponseDto?> UpdateCourseAsync(int id, CourseDto courseDto);
         Task<bool> DeleteCourseAsync(int id);
         Task<bool> UpdateCourseOrderAsync(List<int> courseIds);
+        Task<bool> EnrollStudentInCourseAsync(int courseId, string studentEmail);
+        Task<bool> UnenrollStudentFromCourseAsync(int courseId, int studentId);
 
         // Lesson CRUD
         Task<IEnumerable<LessonResponseDto>> GetLessonsByCourseAsync(int courseId);
@@ -48,5 +50,10 @@ namespace ElearningAPI.Services
         Task<IEnumerable<RecentActivityDto>> GetRecentActivitiesAsync(int limit = 5);
         Task<IEnumerable<CourseCompletionDto>> GetCourseCompletionAsync();
         Task<IEnumerable<MemberGrowthDto>> GetMemberGrowthAsync();
+
+        // Enrollment Requests
+        Task<IEnumerable<object>> GetEnrollmentRequestsAsync();
+        Task<bool> ApproveEnrollmentRequestAsync(int requestId);
+        Task<bool> RejectEnrollmentRequestAsync(int requestId);
     }
 }

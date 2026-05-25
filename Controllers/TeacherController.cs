@@ -55,6 +55,7 @@ namespace ElearningAPI.Controllers
         }
 
         [HttpPost("students/add")]
+        [Authorize(Roles = "ADMIN")]
         public async Task<IActionResult> AddStudent([FromBody] EnrollRequestDto dto)
         {
             var success = await _teacherService.AddStudentToClass(GetUserId(), dto.Email);
@@ -63,6 +64,7 @@ namespace ElearningAPI.Controllers
         }
 
         [HttpPost("courses/{courseId}/enroll")]
+        [Authorize(Roles = "ADMIN")]
         public async Task<IActionResult> EnrollStudent(int courseId, [FromBody] EnrollRequestDto dto)
         {
             var success = await _teacherService.EnrollStudentInCourseAsync(GetUserId(), courseId, dto.Email);
@@ -71,6 +73,7 @@ namespace ElearningAPI.Controllers
         }
 
         [HttpPut("students/{studentId}")]
+        [Authorize(Roles = "ADMIN")]
         public async Task<IActionResult> UpdateStudent(int studentId, [FromBody] UpdateTeacherStudentDto dto)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
@@ -81,6 +84,7 @@ namespace ElearningAPI.Controllers
         }
 
         [HttpDelete("students/{studentId}")]
+        [Authorize(Roles = "ADMIN")]
         public async Task<IActionResult> RemoveStudent(int studentId)
         {
             var success = await _teacherService.RemoveStudentFromClass(GetUserId(), studentId);

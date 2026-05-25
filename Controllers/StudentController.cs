@@ -46,6 +46,18 @@ namespace ElearningAPI.Controllers
             return Ok(await _studentService.EnrollCourse(GetUserId(), courseId));
         }
 
+        [HttpPost("courses/{courseId}/request-enroll")]
+        public async Task<IActionResult> RequestEnroll(int courseId)
+        {
+            return Ok(await _studentService.RequestEnrollCourseAsync(GetUserId(), courseId));
+        }
+
+        [HttpGet("courses/{courseId}/enrollment-status")]
+        public async Task<IActionResult> GetEnrollmentStatus(int courseId)
+        {
+            return Ok(await _studentService.GetEnrollmentStatusAsync(GetUserId(), courseId));
+        }
+
         [HttpGet("lessons")]
         public async Task<IActionResult> GetLessons()
         {

@@ -75,23 +75,7 @@ namespace ElearningAPI.Controllers
                 .OrderBy(f => f.CreatedAt)
                 .ToListAsync();
 
-            var repliesByParent = feedbacks
-                .Where(f => f.ParentFeedbackId.HasValue)
-                .GroupBy(f => f.ParentFeedbackId!.Value)
-                .ToDictionary(g => g.Key, g => g.OrderBy(r => r.CreatedAt).Select(ToThreadDto).ToList());
-
-            var roots = feedbacks
-                .Where(f => !f.ParentFeedbackId.HasValue)
-                .OrderBy(f => f.CreatedAt)
-                .Select(f =>
-                {
-                    var dto = ToThreadDto(f);
-                    dto.Replies = repliesByParent.TryGetValue(f.Id, out var replies) ? replies : new List<FeedbackThreadDto>();
-                    return dto;
-                })
-                .ToList();
-
-            return Ok(roots);
+            return Ok(BuildReplyTree(feedbacks));
         }
 
         [HttpGet("thread")]
@@ -104,23 +88,7 @@ namespace ElearningAPI.Controllers
                 .OrderBy(f => f.CreatedAt)
                 .ToListAsync();
 
-            var repliesByParent = feedbacks
-                .Where(f => f.ParentFeedbackId.HasValue)
-                .GroupBy(f => f.ParentFeedbackId!.Value)
-                .ToDictionary(g => g.Key, g => g.OrderBy(r => r.CreatedAt).Select(ToThreadDto).ToList());
-
-            var roots = feedbacks
-                .Where(f => !f.ParentFeedbackId.HasValue)
-                .OrderBy(f => f.CreatedAt)
-                .Select(f =>
-                {
-                    var dto = ToThreadDto(f);
-                    dto.Replies = repliesByParent.TryGetValue(f.Id, out var replies) ? replies : new List<FeedbackThreadDto>();
-                    return dto;
-                })
-                .ToList();
-
-            return Ok(roots);
+            return Ok(BuildReplyTree(feedbacks));
         }
 
         [HttpPost]
@@ -247,6 +215,30 @@ namespace ElearningAPI.Controllers
                 .ToList();
 
             return Ok(new { Courses = courses, Teachers = teachers });
+        }
+
+        private static List<FeedbackThreadDto> BuildReplyTree(List<Feedback> feedbacks)
+        {
+            var childrenByParent = feedbacks
+                .Where(f => f.ParentFeedbackId.HasValue)
+                .GroupBy(f => f.ParentFeedbackId!.Value)
+                .ToDictionary(g => g.Key, g => g.OrderBy(r => r.CreatedAt).ToList());
+
+            FeedbackThreadDto ToTree(Feedback f)
+            {
+                var dto = ToThreadDto(f);
+                if (childrenByParent.TryGetValue(f.Id, out var children))
+                {
+                    dto.Replies = children.Select(c => ToTree(c)).ToList();
+                }
+                return dto;
+            }
+
+            return feedbacks
+                .Where(f => !f.ParentFeedbackId.HasValue)
+                .OrderBy(f => f.CreatedAt)
+                .Select(f => ToTree(f))
+                .ToList();
         }
 
         private IQueryable<Feedback> FeedbackQuery()

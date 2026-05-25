@@ -266,15 +266,9 @@ namespace ElearningAPI.Controllers
         }
 
         [HttpPost("lessons/create")]
-        public async Task<IActionResult> CreateLesson([FromForm] LessonDto dto)
+        public IActionResult CreateLesson([FromForm] LessonDto dto)
         {
-            if (!ModelState.IsValid) return BadRequest(ModelState);
-
-            var adminId = GetCurrentUserId();
-            var result = await _adminService.CreateLessonAsync(dto, adminId);
-            if (result == null) return NotFound(new { message = "Course not found for this lesson" });
-
-            return CreatedAtAction(nameof(GetLessonById), new { id = result.Id }, result);
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = "Quản trị viên không có quyền thêm bài giảng. Quyền này thuộc về Giảng viên phụ trách." });
         }
 
         [HttpPut("lessons/update/{id}")]
@@ -381,6 +375,47 @@ namespace ElearningAPI.Controllers
             if (!success) return NotFound(new { message = "Learning item not found" });
 
             return Ok(new { message = "Learning item deleted successfully" });
+        }
+
+        [HttpPost("courses/{courseId}/enroll")]
+        public async Task<IActionResult> EnrollStudent(int courseId, [FromBody] EnrollRequestDto dto)
+        {
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+
+            var success = await _adminService.EnrollStudentInCourseAsync(courseId, dto.Email);
+            if (!success) return BadRequest(new { message = "Không thể đăng ký học sinh vào khóa học. Vui lòng kiểm tra email." });
+            return Ok(new { message = "Đã đăng ký học sinh vào khóa học thành công." });
+        }
+
+        [HttpDelete("courses/{courseId}/unenroll/{studentId}")]
+        public async Task<IActionResult> UnenrollStudent(int courseId, int studentId)
+        {
+            var success = await _adminService.UnenrollStudentFromCourseAsync(courseId, studentId);
+            if (!success) return NotFound(new { message = "Không tìm thấy lượt đăng ký của học sinh trong khóa học này." });
+            return Ok(new { message = "Đã gỡ học sinh khỏi khóa học thành công." });
+        }
+
+        [HttpGet("enrollment-requests")]
+        public async Task<IActionResult> GetEnrollmentRequests()
+        {
+            var requests = await _adminService.GetEnrollmentRequestsAsync();
+            return Ok(requests);
+        }
+
+        [HttpPost("enrollment-requests/{requestId}/approve")]
+        public async Task<IActionResult> ApproveEnrollmentRequest(int requestId)
+        {
+            var success = await _adminService.ApproveEnrollmentRequestAsync(requestId);
+            if (!success) return BadRequest(new { message = "Không tìm thấy yêu cầu đăng ký hoặc yêu cầu đã được xử lý trước đó." });
+            return Ok(new { message = "Đã phê duyệt yêu cầu đăng ký của học sinh thành công." });
+        }
+
+        [HttpPost("enrollment-requests/{requestId}/reject")]
+        public async Task<IActionResult> RejectEnrollmentRequest(int requestId)
+        {
+            var success = await _adminService.RejectEnrollmentRequestAsync(requestId);
+            if (!success) return BadRequest(new { message = "Không tìm thấy yêu cầu đăng ký hoặc yêu cầu đã được xử lý trước đó." });
+            return Ok(new { message = "Đã từ chối yêu cầu đăng ký của học sinh." });
         }
     }
 }

@@ -113,6 +113,7 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IAdminService, AdminService>();
 builder.Services.AddScoped<ITeacherService, TeacherService>();
 builder.Services.AddScoped<IStudentService, StudentService>();
+builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<DocumentConversionService>();
 builder.Services.AddScoped<IPdfQuizParserService, PdfQuizParserService>();
 

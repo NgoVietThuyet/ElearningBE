@@ -8,10 +8,14 @@ namespace ElearningAPI.Services
     public class StudentService : IStudentService
     {
         private readonly AppDbContext _context;
+        private readonly ISseConnectionManager _sseManager;
+        private readonly INotificationService _notificationService;
 
-        public StudentService(AppDbContext context)
+        public StudentService(AppDbContext context, ISseConnectionManager sseManager, INotificationService notificationService)
         {
             _context = context;
+            _sseManager = sseManager;
+            _notificationService = notificationService;
         }
 
         public async Task<object> GetOverviewStats(int studentId)
@@ -220,6 +224,93 @@ namespace ElearningAPI.Services
             }
 
             return new { Success = true, Message = "Enrolled successfully." };
+        }
+
+        public async Task<object> RequestEnrollCourseAsync(int studentId, int courseId)
+        {
+            var course = await _context.Courses.AsNoTracking().FirstOrDefaultAsync(c => c.Id == courseId);
+            if (course == null) return new { Success = false, Message = "Không tìm thấy khóa học." };
+
+            var isEnrolled = await _context.Enrollments.AnyAsync(e => e.StudentId == studentId && e.CourseId == courseId);
+            if (isEnrolled) return new { Success = false, Message = "Bạn đã tham gia khóa học này." };
+
+            var existingRequest = await _context.EnrollmentRequests
+                .FirstOrDefaultAsync(r => r.StudentId == studentId && r.CourseId == courseId);
+
+            if (existingRequest != null)
+            {
+                if (existingRequest.Status == "PENDING")
+                {
+                    return new { Success = true, Message = "Yêu cầu đăng ký đã được gửi trước đó và đang chờ phê duyệt.", RequestStatus = "PENDING" };
+                }
+
+                existingRequest.Status = "PENDING";
+                existingRequest.UpdatedAt = DateTime.UtcNow;
+            }
+            else
+            {
+                var newRequest = new EnrollmentRequest
+                {
+                    StudentId = studentId,
+                    CourseId = courseId,
+                    Status = "PENDING",
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+                _context.EnrollmentRequests.Add(newRequest);
+            }
+
+            await _context.SaveChangesAsync();
+
+            var student = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == studentId);
+            var studentName = student?.FullName ?? "Học sinh";
+            var studentEmail = student?.Email ?? "";
+
+            // Gửi thông báo và lưu CSDL cho Admin
+            await _notificationService.CreateNotificationForAllAdminsAsync(
+                "Yêu cầu tham gia khóa học",
+                $"Học viên {studentName} đã gửi yêu cầu tham gia khóa học {course.Title}",
+                "ENROLLMENT",
+                courseId
+            );
+
+            // Gửi SSE real-time notification cho Admin
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var payload = new
+                    {
+                        studentId,
+                        studentName,
+                        studentEmail,
+                        courseId,
+                        courseTitle = course.Title,
+                        createdAt = DateTime.UtcNow
+                    };
+                    await _sseManager.BroadcastToAdminAsync("enrollment-requested", payload);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error sending SSE: {ex.Message}");
+                }
+            });
+
+            return new { Success = true, Message = "Gửi yêu cầu đăng ký thành công. Đang chờ phê duyệt.", RequestStatus = "PENDING" };
+        }
+
+        public async Task<object> GetEnrollmentStatusAsync(int studentId, int courseId)
+        {
+            var isEnrolled = await _context.Enrollments.AnyAsync(e => e.StudentId == studentId && e.CourseId == courseId);
+            var request = await _context.EnrollmentRequests
+                .AsNoTracking()
+                .FirstOrDefaultAsync(r => r.StudentId == studentId && r.CourseId == courseId);
+
+            return new
+            {
+                IsEnrolled = isEnrolled,
+                RequestStatus = request?.Status ?? "NONE"
+            };
         }
 
         public async Task<object?> SubmitTest(int studentId, int testId, IEnumerable<int> answers)

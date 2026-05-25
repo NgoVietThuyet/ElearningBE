@@ -10,6 +10,7 @@ namespace ElearningAPI.Services
     {
         private readonly AppDbContext _context;
         private readonly ISseConnectionManager _sseManager;
+        private readonly INotificationService _notificationService;
         private static readonly HashSet<string> AllowedPdfTypes = new(StringComparer.OrdinalIgnoreCase)
         {
             "application/pdf"
@@ -25,10 +26,11 @@ namespace ElearningAPI.Services
             "application/octet-stream"
         };
 
-        public TeacherService(AppDbContext context, ISseConnectionManager sseManager)
+        public TeacherService(AppDbContext context, ISseConnectionManager sseManager, INotificationService notificationService)
         {
             _context = context;
             _sseManager = sseManager;
+            _notificationService = notificationService;
         }
 
         private static async Task<byte[]> ReadFormFileAsync(Microsoft.AspNetCore.Http.IFormFile file)
@@ -425,6 +427,32 @@ namespace ElearningAPI.Services
             _context.Lessons.Add(lesson);
             await _context.SaveChangesAsync();
 
+            var course = await _context.Courses.AsNoTracking().FirstOrDefaultAsync(c => c.Id == lesson.CourseId);
+            var courseTitle = course?.Title ?? "Khóa học";
+
+            await _notificationService.CreateNotificationAsync(
+                teacherId,
+                "Tạo bài giảng thành công",
+                $"Bài giảng {lesson.Title} đã được tạo thành công trong khóa học {courseTitle}",
+                "LESSON",
+                lesson.CourseId
+            );
+
+            await _notificationService.CreateNotificationForAllAdminsAsync(
+                "Bài giảng mới được tạo",
+                $"Giảng viên đã tạo bài giảng {lesson.Title} trong khóa học {courseTitle}",
+                "LESSON",
+                lesson.CourseId
+            );
+
+            await _notificationService.CreateNotificationForCourseStudentsAsync(
+                lesson.CourseId,
+                "Bài giảng mới",
+                $"Khóa học {courseTitle} có bài giảng mới: {lesson.Title}",
+                "LESSON",
+                lesson.CourseId
+            );
+
             // SSE: notify teacher channel
             _ = Task.Run(async () =>
                 await _sseManager.BroadcastAsync($"teacher-{teacherId}", "lesson-changed",
@@ -517,6 +545,38 @@ namespace ElearningAPI.Services
             };
             _context.Tests.Add(item);
             await _context.SaveChangesAsync();
+
+            var lesson = await _context.Lessons
+                .Include(l => l.Course)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(l => l.Id == lessonId);
+            var courseTitle = lesson?.Course?.Title ?? "Khóa học";
+
+            await _notificationService.CreateNotificationAsync(
+                teacherId,
+                "Tạo bài thi/quiz thành công",
+                $"Bài thi/quiz {item.Title} đã được tạo thành công trong bài học {lesson?.Title}",
+                "QUIZ",
+                lesson?.CourseId
+            );
+
+            await _notificationService.CreateNotificationForAllAdminsAsync(
+                "Bài thi/quiz mới",
+                $"Giảng viên đã tạo bài thi/quiz {item.Title} trong bài học {lesson?.Title} thuộc khóa học {courseTitle}",
+                "QUIZ",
+                lesson?.CourseId
+            );
+
+            if (lesson?.CourseId != null)
+            {
+                await _notificationService.CreateNotificationForCourseStudentsAsync(
+                    lesson.CourseId,
+                    "Bài thi/quiz mới",
+                    $"Khóa học {courseTitle} có bài thi/quiz mới: {item.Title}",
+                    "QUIZ",
+                    lesson.CourseId
+                );
+            }
 
             return new { item.Id, item.LessonId, item.Title, Type = GetContentType(item.Content), item.Content, item.CreatedAt };
         }
@@ -674,6 +734,33 @@ namespace ElearningAPI.Services
             }
 
             await _context.SaveChangesAsync();
+
+            var course = await _context.Courses.AsNoTracking().FirstOrDefaultAsync(c => c.Id == courseId);
+            var courseTitle = course?.Title ?? "Khóa học";
+
+            await _notificationService.CreateNotificationAsync(
+                student.Id,
+                "Đăng ký lớp học thành công",
+                $"Bạn đã được thêm vào khóa học: {courseTitle}",
+                "ENROLLMENT",
+                courseId
+            );
+
+            await _notificationService.CreateNotificationAsync(
+                teacherId,
+                "Học viên mới tham gia lớp",
+                $"Học viên {student.FullName} đã được thêm vào lớp {courseTitle}",
+                "ENROLLMENT",
+                courseId
+            );
+
+            await _notificationService.CreateNotificationForAllAdminsAsync(
+                "Học viên tham gia khóa học",
+                $"Giảng viên đã thêm học viên {student.FullName} vào khóa học {courseTitle}",
+                "ENROLLMENT",
+                courseId
+            );
+
             return true;
         }
 

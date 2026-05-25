@@ -33,9 +33,14 @@ namespace ElearningAPI.Services
             WriteIndented = false
         };
 
-        public AdminService(AppDbContext context)
+        private readonly ISseConnectionManager _sseManager;
+        private readonly INotificationService _notificationService;
+
+        public AdminService(AppDbContext context, ISseConnectionManager sseManager, INotificationService notificationService)
         {
             _context = context;
+            _sseManager = sseManager;
+            _notificationService = notificationService;
         }
 
         private static DateTime? NormalizeUtcDate(DateTime? value)
@@ -788,6 +793,25 @@ namespace ElearningAPI.Services
             _context.Courses.Add(course);
             await _context.SaveChangesAsync();
 
+            // Gửi thông báo
+            await _notificationService.CreateNotificationForAllAdminsAsync(
+                "Khóa học mới được tạo",
+                $"Admin đã tạo khóa học mới: {course.Title}",
+                "COURSE",
+                course.Id
+            );
+
+            if (course.TeacherId.HasValue)
+            {
+                await _notificationService.CreateNotificationAsync(
+                    course.TeacherId.Value,
+                    "Phân công giảng dạy mới",
+                    $"Bạn đã được phân công giảng dạy khóa học mới: {course.Title}",
+                    "COURSE",
+                    course.Id
+                );
+            }
+
             return await GetCourseByIdAsync(course.Id) ?? throw new Exception("Failed to create course");
         }
 
@@ -797,6 +821,8 @@ namespace ElearningAPI.Services
             if (course == null) return null;
 
             await NormalizeCourseDtoAsync(courseDto);
+
+            var oldTeacherId = course.TeacherId;
 
             course.Title = courseDto.Title;
             course.Description = courseDto.Description;
@@ -816,6 +842,18 @@ namespace ElearningAPI.Services
             course.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
+
+            if (course.TeacherId.HasValue && course.TeacherId != oldTeacherId)
+            {
+                await _notificationService.CreateNotificationAsync(
+                    course.TeacherId.Value,
+                    "Phân công giảng dạy",
+                    $"Bạn đã được phân công giảng dạy khóa học: {course.Title}",
+                    "COURSE",
+                    course.Id
+                );
+            }
+
             return await GetCourseByIdAsync(course.Id);
         }
 
@@ -976,6 +1014,22 @@ namespace ElearningAPI.Services
             _context.Lessons.Add(lesson);
             await _context.SaveChangesAsync();
 
+            // Gửi thông báo
+            await _notificationService.CreateNotificationForAllAdminsAsync(
+                "Bài giảng mới được tạo",
+                $"Admin đã tạo bài giảng {lesson.Title} trong khóa học {course.Title}",
+                "LESSON",
+                course.Id
+            );
+
+            await _notificationService.CreateNotificationForCourseStudentsAsync(
+                course.Id,
+                "Bài giảng mới",
+                $"Khóa học {course.Title} có bài giảng mới: {lesson.Title}",
+                "LESSON",
+                course.Id
+            );
+
             return await GetLessonByIdAsync(lesson.Id);
         }
 
@@ -1107,6 +1161,24 @@ namespace ElearningAPI.Services
             _context.Tests.Add(item);
             await _context.SaveChangesAsync();
             await _context.Entry(item).Reference(t => t.Lesson).LoadAsync();
+
+            var course = await _context.Courses.AsNoTracking().FirstOrDefaultAsync(c => c.Id == dto.CourseId);
+            var courseTitle = course?.Title ?? "Khóa học";
+
+            await _notificationService.CreateNotificationForAllAdminsAsync(
+                "Bài thi/quiz mới",
+                $"Admin đã tạo bài thi/quiz {item.Title} trong khóa học {courseTitle}",
+                "QUIZ",
+                dto.CourseId
+            );
+
+            await _notificationService.CreateNotificationForCourseStudentsAsync(
+                dto.CourseId,
+                "Bài thi/quiz mới",
+                $"Khóa học {courseTitle} có bài thi/quiz mới: {item.Title}",
+                "QUIZ",
+                dto.CourseId
+            );
 
             return ToLearningItemResponse(item, type);
         }
@@ -1278,6 +1350,256 @@ namespace ElearningAPI.Services
             }
 
             return list;
+        }
+
+        public async Task<bool> EnrollStudentInCourseAsync(int courseId, string studentEmail)
+        {
+            var course = await _context.Courses.FirstOrDefaultAsync(c => c.Id == courseId);
+            if (course == null) return false;
+
+            var email = studentEmail.Trim().ToLower();
+            var student = await _context.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == email && u.Role == UserRole.STUDENT);
+            if (student == null) return false;
+
+            // 1. Link student to course's teacher in TeacherStudents if there is a teacher
+            if (course.TeacherId.HasValue && course.TeacherId.Value > 0)
+            {
+                var hasLink = await _context.TeacherStudents.AnyAsync(ts => ts.TeacherId == course.TeacherId.Value && ts.StudentId == student.Id);
+                if (!hasLink)
+                {
+                    _context.TeacherStudents.Add(new TeacherStudent 
+                    { 
+                        TeacherId = course.TeacherId.Value, 
+                        StudentId = student.Id, 
+                        CreatedAt = DateTime.UtcNow 
+                    });
+                }
+            }
+
+            // 2. Ensure Enrollment exists
+            var isEnrolled = await _context.Enrollments.AnyAsync(e => e.StudentId == student.Id && e.CourseId == courseId);
+            if (!isEnrolled)
+            {
+                _context.Enrollments.Add(new Enrollment 
+                { 
+                    StudentId = student.Id, 
+                    CourseId = courseId, 
+                    EnrolledAt = DateTime.UtcNow, 
+                    ProgressPercentage = 0 
+                });
+            }
+
+            await _context.SaveChangesAsync();
+
+            // Gửi thông báo
+            await _notificationService.CreateNotificationAsync(
+                student.Id,
+                "Đăng ký lớp học thành công",
+                $"Bạn đã được thêm vào khóa học: {course.Title}",
+                "ENROLLMENT",
+                course.Id
+            );
+
+            if (course.TeacherId.HasValue)
+            {
+                await _notificationService.CreateNotificationAsync(
+                    course.TeacherId.Value,
+                    "Học viên mới tham gia lớp",
+                    $"Học viên {student.FullName} đã được thêm vào lớp {course.Title}",
+                    "ENROLLMENT",
+                    course.Id
+                );
+            }
+
+            await _notificationService.CreateNotificationForAllAdminsAsync(
+                "Học viên tham gia khóa học",
+                $"Học viên {student.FullName} đã được thêm vào khóa học {course.Title}",
+                "ENROLLMENT",
+                course.Id
+            );
+
+            return true;
+        }
+
+        public async Task<bool> UnenrollStudentFromCourseAsync(int courseId, int studentId)
+        {
+            var enrollment = await _context.Enrollments.FirstOrDefaultAsync(e => e.CourseId == courseId && e.StudentId == studentId);
+            if (enrollment == null) return false;
+
+            _context.Enrollments.Remove(enrollment);
+            await _context.SaveChangesAsync();
+            return true;
+        }
+
+        public async Task<IEnumerable<object>> GetEnrollmentRequestsAsync()
+        {
+            return await _context.EnrollmentRequests
+                .AsNoTracking()
+                .Where(r => r.Status == "PENDING")
+                .Include(r => r.Student)
+                .Include(r => r.Course)
+                .OrderByDescending(r => r.CreatedAt)
+                .Select(r => new
+                {
+                    r.Id,
+                    StudentId = r.StudentId,
+                    StudentName = r.Student != null ? r.Student.FullName : "Học sinh",
+                    StudentEmail = r.Student != null ? r.Student.Email : "",
+                    CourseId = r.CourseId,
+                    CourseTitle = r.Course != null ? r.Course.Title : "",
+                    r.Status,
+                    r.CreatedAt
+                })
+                .ToListAsync();
+        }
+
+        public async Task<bool> ApproveEnrollmentRequestAsync(int requestId)
+        {
+            var request = await _context.EnrollmentRequests
+                .FirstOrDefaultAsync(r => r.Id == requestId && r.Status == "PENDING");
+
+            if (request == null) return false;
+
+            request.Status = "APPROVED";
+            request.UpdatedAt = DateTime.UtcNow;
+
+            var course = await _context.Courses.FirstOrDefaultAsync(c => c.Id == request.CourseId);
+            if (course != null)
+            {
+                if (course.TeacherId.HasValue && course.TeacherId.Value > 0)
+                {
+                    var hasLink = await _context.TeacherStudents
+                        .AnyAsync(ts => ts.TeacherId == course.TeacherId.Value && ts.StudentId == request.StudentId);
+                    if (!hasLink)
+                    {
+                        _context.TeacherStudents.Add(new TeacherStudent 
+                        { 
+                            TeacherId = course.TeacherId.Value, 
+                            StudentId = request.StudentId, 
+                            CreatedAt = DateTime.UtcNow 
+                        });
+                    }
+                }
+
+                var isEnrolled = await _context.Enrollments
+                    .AnyAsync(e => e.StudentId == request.StudentId && e.CourseId == request.CourseId);
+                if (!isEnrolled)
+                {
+                    _context.Enrollments.Add(new Enrollment 
+                    { 
+                        StudentId = request.StudentId, 
+                        CourseId = request.CourseId, 
+                        EnrolledAt = DateTime.UtcNow, 
+                        ProgressPercentage = 0 
+                    });
+                }
+            }
+
+            await _context.SaveChangesAsync();
+
+            var student = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == request.StudentId);
+            var studentName = student?.FullName ?? "Học sinh";
+
+            await _notificationService.CreateNotificationAsync(
+                request.StudentId,
+                "Yêu cầu được phê duyệt",
+                $"Yêu cầu tham gia khóa học {course?.Title} của bạn đã được phê duyệt! Bắt đầu học ngay.",
+                "ENROLLMENT",
+                request.CourseId
+            );
+
+            if (course != null && course.TeacherId.HasValue)
+            {
+                await _notificationService.CreateNotificationAsync(
+                    course.TeacherId.Value,
+                    "Học viên tham gia lớp",
+                    $"Học viên {studentName} đã tham gia lớp {course.Title} (được phê duyệt đăng ký)",
+                    "ENROLLMENT",
+                    course.Id
+                );
+            }
+
+            await _notificationService.CreateNotificationForAllAdminsAsync(
+                "Đã phê duyệt yêu cầu",
+                $"Yêu cầu tham gia khóa học {course?.Title} của học viên {studentName} đã được phê duyệt",
+                "ENROLLMENT",
+                request.CourseId
+            );
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var payload = new
+                    {
+                        courseId = request.CourseId,
+                        status = "APPROVED",
+                        message = $"Yêu cầu tham gia khóa học '{course?.Title}' của bạn đã được phê duyệt!"
+                    };
+                    await _sseManager.BroadcastAsync($"student-{request.StudentId}", "enrollment-status-changed", payload);
+                    await _sseManager.BroadcastToAdminAsync("enrollment-approved", new { requestId });
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error sending SSE: {ex.Message}");
+                }
+            });
+
+            return true;
+        }
+
+        public async Task<bool> RejectEnrollmentRequestAsync(int requestId)
+        {
+            var request = await _context.EnrollmentRequests
+                .FirstOrDefaultAsync(r => r.Id == requestId && r.Status == "PENDING");
+
+            if (request == null) return false;
+
+            request.Status = "REJECTED";
+            request.UpdatedAt = DateTime.UtcNow;
+
+            var course = await _context.Courses.AsNoTracking().FirstOrDefaultAsync(c => c.Id == request.CourseId);
+
+            await _context.SaveChangesAsync();
+
+            var student = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == request.StudentId);
+            var studentName = student?.FullName ?? "Học sinh";
+
+            await _notificationService.CreateNotificationAsync(
+                request.StudentId,
+                "Yêu cầu bị từ chối",
+                $"Yêu cầu tham gia khóa học {course?.Title} của bạn đã bị từ chối.",
+                "ENROLLMENT",
+                request.CourseId
+            );
+
+            await _notificationService.CreateNotificationForAllAdminsAsync(
+                "Đã từ chối yêu cầu",
+                $"Yêu cầu tham gia khóa học {course?.Title} của học viên {studentName} đã bị từ chối",
+                "ENROLLMENT",
+                request.CourseId
+            );
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var payload = new
+                    {
+                        courseId = request.CourseId,
+                        status = "REJECTED",
+                        message = $"Yêu cầu tham gia khóa học '{course?.Title}' của bạn không được phê duyệt."
+                    };
+                    await _sseManager.BroadcastAsync($"student-{request.StudentId}", "enrollment-status-changed", payload);
+                    await _sseManager.BroadcastToAdminAsync("enrollment-rejected", new { requestId });
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error sending SSE: {ex.Message}");
+                }
+            });
+
+            return true;
         }
     }
 }
