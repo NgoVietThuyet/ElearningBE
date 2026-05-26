@@ -105,5 +105,8 @@ namespace ElearningAPI.Dtos
         public string? AvatarUrl { get; set; }
 
         public IFormFile? AvatarFile { get; set; }
+
+        [MinLength(6, ErrorMessage = "Mật khẩu mới phải có ít nhất 6 ký tự")]
+        public string? Password { get; set; }
     }
 }

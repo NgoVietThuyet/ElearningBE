@@ -396,7 +396,7 @@ namespace ElearningAPI.Services
             {
                 FullName = dto.FullName,
                 Email = dto.Email,
-                PasswordHash = dto.Password,
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
                 Role = dto.Role,
                 DateOfBirth = dto.DateOfBirth,
                 Gender = dto.Gender,
@@ -445,6 +445,12 @@ namespace ElearningAPI.Services
             user.IsActive = dto.IsActive;
             user.AvatarUrl = dto.AvatarUrl;
             await ApplyAvatarAsync(user, dto.AvatarFile);
+            
+            if (!string.IsNullOrWhiteSpace(dto.Password))
+            {
+                user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password);
+            }
+
             user.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();

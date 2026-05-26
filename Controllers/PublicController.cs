@@ -345,6 +345,12 @@ namespace ElearningAPI.Controllers
                         : (u.AvatarImage != null ? $"/api/public/users/{u.Id}/avatar" : null),
                     StudentCount = u.StudentsManaged.Count,
                     LessonCount = u.CreatedLessons.Count,
+                    u.ShortBio,
+                    u.TeachingExperienceYears,
+                    u.PhoneNumber,
+                    u.Address,
+                    u.Gender,
+                    u.DateOfBirth,
                     Score = (u.StudentsManaged.Count + u.CreatedLessons.Count) / 2.0
                 })
                 .OrderByDescending(t => t.Score)
@@ -370,6 +376,12 @@ namespace ElearningAPI.Controllers
                         : (u.AvatarImage != null ? $"/api/public/users/{u.Id}/avatar" : null),
                     StudentCount = u.StudentsManaged.Count,
                     LessonCount = u.CreatedLessons.Count,
+                    u.ShortBio,
+                    u.TeachingExperienceYears,
+                    u.PhoneNumber,
+                    u.Address,
+                    u.Gender,
+                    u.DateOfBirth,
                     Score = (u.StudentsManaged.Count + u.CreatedLessons.Count) / 2.0
                 })
                 .OrderByDescending(t => t.Score)
